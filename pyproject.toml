@@ -5,7 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "dotenv>=0.9.9",
     "longport>=3.0.11",
+    "numpy>=2.3.2",
+    "pandas>=2.3.1",
+    "plotly==5.15.0",
 ]
 
 [[tool.uv.index]]
