@@ -96,7 +96,7 @@ async def main():
 
         # 创建简单移动平均策略
         ma_strategy = SimpleMAStrategy(
-            short_period=5, long_period=20, symbols=["00981.HK"]
+            short_period=5, long_period=20, symbols=["CRCL.US"]
         )
 
         print(f"创建策略: {ma_strategy.name}")
@@ -136,7 +136,7 @@ async def main():
 
         # 7. 运行一段时间
         print("\n7. 运行系统...")
-        print("系统将运行60秒，按 Ctrl+C 可提前停止")
+        print("量化交易系统开始运行，按 Ctrl+C 可提前停止")
 
         try:
             # await asyncio.sleep(60)  # 运行60秒

@@ -352,6 +352,8 @@ class TaskManager:
         for symbol in task.symbols:
             # 这里应该获取实际的市场数据
             data = self.account_manager.quote_context.quote([symbol])[0]
+            static = self.account_manager.quote_context.static_info([symbol])[0]
+            lot_size = static.lot_size if static else 500
 
             # 模拟市场数据
             market_data = {
@@ -369,7 +371,7 @@ class TaskManager:
                 position_dict = {pos.symbol: pos.quantity for pos in positions}
 
                 orders = await self.trade_engine.batch_execute_signals(
-                    signals, account_value, position_dict
+                    signals, account_value, position_dict, lot_size
                 )
 
                 if orders:

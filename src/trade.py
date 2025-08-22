@@ -157,6 +157,7 @@ class TradeEngine:
         signal: TradingSignal,
         account_value: float,
         current_positions: Dict[str, int],
+        lot_size: int,
     ) -> Optional[TradeOrder]:
         """执行交易信号"""
         try:
@@ -180,7 +181,7 @@ class TradeEngine:
             # 计算交易数量（如果信号中没有指定）
             quantity = signal.quantity
             if not quantity:
-                quantity = self._calculate_quantity(signal, account_value)
+                quantity = self._calculate_quantity(signal, account_value, lot_size)
 
             if quantity <= 0:
                 self.logger.warning(f"计算得到的交易数量无效: {quantity}")
@@ -206,7 +207,6 @@ class TradeEngine:
                 self.logger.info(f"订单提交成功: {order_id}")
                 return trade_order
             else:
-                raise
                 self.logger.error(f"订单提交失败: {order_id}")
                 return None
 
@@ -214,7 +214,9 @@ class TradeEngine:
             self.logger.error(f"执行交易信号失败: {e}")
             return None
 
-    def _calculate_quantity(self, signal: TradingSignal, account_value: float) -> int:
+    def _calculate_quantity(
+        self, signal: TradingSignal, account_value: float, lot_size: int
+    ) -> int:
         """计算交易数量"""
         if not signal.price:
             return 0
@@ -223,10 +225,10 @@ class TradeEngine:
         position_value = account_value * self.config.max_position_pct * signal.strength
         quantity = int(position_value / signal.price)
 
-        quantity = math.ceil(quantity / 500) * 500
-
         # 确保最小交易单位
-        return max(quantity, 500)  # 最小100股
+        quantity = math.ceil(quantity / lot_size) * lot_size
+
+        return quantity
 
     async def _submit_order(self, trade_order: TradeOrder) -> bool:
         """提交订单到交易所"""
@@ -247,7 +249,7 @@ class TradeEngine:
 
             self.trade_context.submit_order(**longport_order)
 
-            # 模拟订单提交成功
+            # 订单提交成功
             trade_order.status = TradeStatus.SUBMITTED
             return True
 
@@ -270,7 +272,7 @@ class TradeEngine:
                 return False
 
             # 调用API取消订单（这里是模拟）
-            # await self.trade_context.cancel_order(order_id)
+            self.trade_context.cancel_order(order_id)
 
             order.status = TradeStatus.CANCELLED
             self.logger.info(f"订单已取消: {order_id}")
@@ -288,9 +290,9 @@ class TradeEngine:
                 return None
 
             # 这里应该调用真实API查询订单状态
-            # status = await self.trade_context.query_order(order_id)
+            status = self.trade_context.order_detail(order_id)
 
-            return order
+            return status
 
         except Exception as e:
             self.logger.error(f"查询订单状态失败: {e}")
@@ -322,12 +324,15 @@ class TradeEngine:
         signals: List[TradingSignal],
         account_value: float,
         current_positions: Dict[str, int],
+        lot_size: int,
     ) -> List[TradeOrder]:
         """批量执行交易信号"""
         executed_orders = []
 
         for signal in signals:
-            order = await self.execute_signal(signal, account_value, current_positions)
+            order = await self.execute_signal(
+                signal, account_value, current_positions, lot_size
+            )
             if order:
                 executed_orders.append(order)
 
