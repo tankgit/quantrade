@@ -5,6 +5,7 @@
 import os
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
+from decimal import Decimal
 from longport.openapi import Config
 
 
@@ -27,7 +28,7 @@ class TradingConfig:
 
     # 交易配置
     default_currency: str = "USD"
-    max_position_pct: float = 0.1  # 单个股票最大仓位比例
+    max_position_pct: float = Decimal("0.1")  # 单个股票最大仓位比例
 
     def __post_init__(self):
         """初始化后验证配置"""

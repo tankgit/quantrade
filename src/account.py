@@ -81,7 +81,7 @@ class AccountManager:
 
         return balance_data_dict
 
-    async def get_positions(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+    async def get_positions(self, force_refresh: bool = False) -> List:
         """获取持仓信息"""
         try:
             if not force_refresh and self._is_cache_valid() and self._positions_cache:

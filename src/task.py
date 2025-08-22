@@ -11,6 +11,8 @@ from enum import Enum
 import threading
 import time
 
+from pytest import mark
+
 from .config import TradingConfig
 from .strategy import BaseStrategy, StrategyManager
 from .trade import TradeEngine
@@ -349,13 +351,13 @@ class TaskManager:
         # 为每个股票生成市场数据并计算信号
         for symbol in task.symbols:
             # 这里应该获取实际的市场数据
-            # market_data = await self._get_market_data(symbol)
+            data = self.account_manager.quote_context.quote([symbol])[0]
 
             # 模拟市场数据
             market_data = {
                 "symbol": symbol,
-                "close": 100.0 + task.run_count * 0.1,  # 模拟价格变化
-                "timestamp": datetime.now().isoformat(),
+                "close": data.last_done,
+                "timestamp": data.timestamp,
             }
 
             # 计算信号
@@ -363,8 +365,8 @@ class TaskManager:
 
             # 执行信号
             if signals:
-                account_value = account_info.get("total_power", 0)
-                position_dict = {pos["symbol"]: pos["quantity"] for pos in positions}
+                account_value = account_info.buy_power or 0
+                position_dict = {pos.symbol: pos.quantity for pos in positions}
 
                 orders = await self.trade_engine.batch_execute_signals(
                     signals, account_value, position_dict

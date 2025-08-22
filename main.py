@@ -90,13 +90,13 @@ async def main():
                     print(
                         f"- {symbol}: QTY[{quantity}], MP/Cost[{latest_price:.2f}/{cost_price:.2f}], P/L[{pnl:,.2f}, {pnl_percent:.2f}%]"
                     )
-        return
+
         # 4. 创建交易策略
         print("\n4. 创建交易策略...")
 
         # 创建简单移动平均策略
         ma_strategy = SimpleMAStrategy(
-            short_period=5, long_period=20, symbols=["CRCL.US"]
+            short_period=5, long_period=20, symbols=["00981.HK"]
         )
 
         print(f"创建策略: {ma_strategy.name}")
@@ -108,7 +108,7 @@ async def main():
         # 配置任务参数
         task_config = TaskConfig(
             interval=10.0,  # 每10秒执行一次
-            max_runs=100,  # 最多执行100次
+            max_runs=5000,  # 最多执行100次
             auto_restart=False,
         )
 
@@ -139,7 +139,9 @@ async def main():
         print("系统将运行60秒，按 Ctrl+C 可提前停止")
 
         try:
-            await asyncio.sleep(60)  # 运行60秒
+            # await asyncio.sleep(60)  # 运行60秒
+            while True:
+                await asyncio.sleep(1)
         except KeyboardInterrupt:
             print("\n收到中断信号...")
 
