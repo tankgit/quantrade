@@ -227,8 +227,7 @@ class TradeEngine:
 
         # 确保最小交易单位
         quantity = math.ceil(quantity / lot_size) * lot_size
-
-        return quantity
+        return max(quantity, lot_size * 5)
 
     async def _submit_order(self, trade_order: TradeOrder) -> bool:
         """提交订单到交易所"""

@@ -107,7 +107,7 @@ async def main():
 
         # 配置任务参数
         task_config = TaskConfig(
-            interval=10.0,  # 每10秒执行一次
+            interval=5.0,  # 每10秒执行一次
             max_runs=5000,  # 最多执行100次
             auto_restart=False,
         )
