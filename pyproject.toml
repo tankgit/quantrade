@@ -1,17 +1,16 @@
 [project]
-name = "longbridge"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.11"
+name = "longport-trading-project"
+version = "1.0.0"
+description = "LongPort量化交易系统"
 dependencies = [
-    "dotenv>=0.9.9",
-    "longport>=3.0.11",
-    "numpy>=2.3.2",
-    "pandas>=2.3.1",
-    "plotly==5.15.0",
+    "longport==3.0.11",
+    "fastapi==0.104.1",
+    "uvicorn==0.24.0",
+    "python-dotenv==1.0.0",
+    "PyMySQL==1.1.0",
+    "sqlalchemy==2.0.23",
+    "pydantic==2.5.0",
+    "python-multipart==0.0.6",
+    "apscheduler==3.10.4",
 ]
-
-[[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-default = true
+requires-python = ">=3.11"
