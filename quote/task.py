@@ -9,6 +9,7 @@ import logging
 from .db import db_manager, AccountType, MarketType, TaskStatus
 from .strategy import get_strategy, list_available_strategies
 from .trade import get_trade_manager
+from pytz import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,25 @@ class TradingTimeManager:
     HK_MORNING_END = time(12, 0)  # 12:00 HKT
     HK_AFTERNOON_START = time(13, 0)  # 13:00 HKT
     HK_AFTERNOON_END = time(16, 0)  # 16:00 HKT
+
+    @classmethod
+    def is_trading_time(cls, symbol: str):
+        """检查是否在交易时间内"""
+        try:
+            if symbol.endswith(".US"):
+                current_time = datetime.now(timezone("US/Eastern")).time()
+                return cls.is_us_trading_time(
+                    current_time, {"premarket", "market", "postmarket", "overnight"}
+                )
+            elif symbol.endswith(".HK"):
+                current_time = datetime.now(timezone("Asia/Hong_Kong")).time()
+                return cls.is_hk_trading_time(current_time)
+            else:
+                logger.warning(f"未知市场代码: {symbol}")
+                return False
+        except Exception as e:
+            logger.error(f"检查交易时间失败: {e}")
+            return False
 
     @classmethod
     def is_us_trading_time(cls, current_time: time, trading_sessions: Set[str]) -> bool:
@@ -364,19 +384,17 @@ class TaskManager:
 
             symbols = task.get_symbols_list()
 
+            # TODO: 这里AI的实现不太好，首先每个symbol要异步单独处理，然后交易时间整点需要立即触发，而不是按照机械间隔时间等待。
             while not stop_event.is_set():
                 try:
-                    current_time = datetime.now().time()
+                    any_trading = False
+                    for symbol in symbols:
+                        if stop_event.is_set():
+                            break
 
-                    # 检查是否在交易时间内
-                    if TradingTimeManager.is_us_trading_time(
-                        current_time, trading_sessions
-                    ):
-                        # 处理每个股票
-                        for symbol in symbols:
-                            if stop_event.is_set():
-                                break
-
+                        # 按symbol判断是否在交易时间
+                        if TradingTimeManager.is_trading_time(symbol):
+                            any_trading = True
                             operations = strategy.process_symbol(symbol)
                             if operations:
                                 results = trade_manager.execute_strategy_operations(
@@ -384,10 +402,10 @@ class TaskManager:
                                 )
                                 logger.info(f"任务 {task_id} 执行操作: {results}")
 
-                        # 交易时间内，每分钟检查一次
+                    # 如果有任一symbol在交易时间，则每分钟检查一次，否则每10分钟检查一次
+                    if any_trading:
                         stop_event.wait(60)
                     else:
-                        # 非交易时间，每10分钟检查一次
                         stop_event.wait(600)
 
                 except Exception as e:
