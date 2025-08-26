@@ -10,3 +10,5 @@ wheels/
 .venv
 
 test.ipynb
+
+node_modules/
