@@ -29,6 +29,18 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="LongPort量化交易系统", version="1.0.0", lifespan=lifespan)
 
 
+# CORS 中间件配置，允许本机的前端3000端口访问
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # Pydantic模型定义
 class CreateTaskRequest(BaseModel):
     account: str  # "实盘" 或 "模拟盘"

@@ -1,3 +1,4 @@
+import math
 from platform import libc_ver
 from typing import Dict, List, Optional
 from longport.openapi import TradeContext, QuoteContext
@@ -131,12 +132,39 @@ class AccountManager:
             包含余额和持仓的账户摘要
         """
         try:
+            balance_USD = self.trade_context.account_balance("USD")[0]
+            balance_HKD = self.trade_context.account_balance("HKD")[0]
+            cash_infos = balance_USD.cash_infos
+            usd_cash = balance_USD.total_cash
+            hkd_cash = balance_HKD.total_cash
+            net_assets_usd = balance_USD.net_assets
+            net_assets_hkd = balance_HKD.net_assets
+            # 计算汇率，这里直接依照长桥的不同货币单位数据算出汇率
+            ratio = float(hkd_cash / usd_cash) if usd_cash > 0 else None
+
             summary = {
                 "account_type": "模拟盘" if self.is_paper else "实盘",
-                "balances": self.get_account_balance(),
+                "assets": {
+                    info.currency[:-1]: {
+                        "cash": float(info.available_cash),
+                        "stock": 0.0,
+                    }
+                    for info in cash_infos
+                },
+                "balances": {
+                    "USD": {
+                        "total_cash": float(balance_USD.total_cash),
+                        "net_assets": float(balance_USD.net_assets),
+                    },
+                    "HKD": {
+                        "total_cash": float(balance_HKD.total_cash),
+                        "net_assets": float(balance_HKD.net_assets),
+                    },
+                },
                 "positions": self.get_stock_positions(),
                 "total_positions": 0,
-                "total_market_value": 0.0,
+                "stock_market_value": {"US": 0.0, "HK": 0.0},
+                "asset_ratio": {},
             }
 
             # 计算总持仓数量和市值
@@ -144,22 +172,38 @@ class AccountManager:
                 for position in channel["positions"]:
                     summary["total_positions"] += 1
                     # 这里可以进一步计算市值，需要获取当前价格
-                    market_value = float(position["quantity"]) * float(
-                        position["cost_price"]
-                    )
-                    summary["total_market_value"] += market_value
+                    symbol = position["symbol"]
+                    currency = position["currency"]
+                    # TODO: 美股要根据交易时段获取相应价位
+                    price = self.quote_context.quote([symbol])[0].last_done
+                    market_value = float(position["quantity"]) * float(price)
+                    summary["assets"][currency[:-1]]["stock"] += market_value
+
+            stock_us = summary["assets"]["US"]["stock"]
+            stock_hk = summary["assets"]["HK"]["stock"]
+            total_stock_usd = stock_us + (stock_hk / ratio if ratio else 0.0)
+            total_stock_hkd = stock_hk + (stock_us * ratio if ratio else 0.0)
+            summary["stock_market_value"]["US"] = total_stock_usd
+            summary["stock_market_value"]["HK"] = total_stock_hkd
+            summary["asset_ratio"] = {
+                "US": stock_us / float(net_assets_usd),
+                "HK": stock_hk / float(net_assets_hkd),
+            }
+            summary["stock_ratio"] = sum(summary["asset_ratio"].values())
+            summary["asset_ratio"]["cash"] = 1 - summary["stock_ratio"]
+
+            new_position = {"US": [], "HK": []}
+            for position in summary["positions"]["channels"][0]["positions"]:
+                market = position["market"].split(".")[-1]
+                new_position[market].append(position)
+
+            summary["positions"] = new_position
 
             return summary
 
         except Exception as e:
             logger.error(f"获取账户摘要失败: {e}")
-            return {
-                "account_type": "模拟盘" if self.is_paper else "实盘",
-                "balances": [],
-                "positions": {"channels": []},
-                "total_positions": 0,
-                "total_market_value": 0.0,
-            }
+            return {}
 
     def get_position_by_symbol(self, symbol: str) -> Optional[Dict]:
         """
