@@ -318,7 +318,7 @@ const AccountPage = () => {
                                     <td className="py-4 px-6 text-gray-700">{stock.quantity}</td>
                                     <td className="py-4 px-6 text-gray-700">{stock.available_quantity}</td>
                                     <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.cost_price}</td>
-                                    <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.price}{stock.market === "US" && <span className='text-sm px-1 ml-1 bg-yellow-200 text-yellow-600 rounded-lg border-1'>{sessionMap[tradeSession]}</span>}</td>
+                                    <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.price}{stock.market === "US" && <span className='text-sm px-1 py-[2px] ml-1 bg-blue-200 text-blue-600 rounded-md'>{sessionMap[tradeSession]}</span>}</td>
                                     <td className="py-4 px-6">
                                         <ValueDisplay value={stock.pnl} showSign />
                                     </td>
