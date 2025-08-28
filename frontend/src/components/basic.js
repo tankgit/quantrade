@@ -142,8 +142,11 @@ export const StatusBadge = ({ status, type = "default" }) => {
 
 // 数值显示组件
 export const ValueDisplay = ({ value, showSign = false, prefix = "¥", className = "" }) => {
+    if (typeof value !== 'number' && isNaN(parseFloat(value))) {
+        return <span className={`font-bold text-gray-500 ${className}`}>N/A</span>;
+    }
     const numValue = typeof value === 'string' ? parseFloat(value) : value;
-    const isPositive = numValue >= 0;
+    const isPositive = numValue > 0;
     const colorClass = isPositive ? 'text-red-600' : 'text-green-600';
     const sign = showSign && isPositive ? '+' : '';
 

@@ -44,6 +44,20 @@ export const api = {
         }
     },
 
+    async getQuotePrice(accountType, symbols) {
+        try {
+            const response = await fetch(`${API_BASE}/api/quote/${accountType}/price?symbols=${encodeURIComponent(symbols.join(','))}`);
+            const data = await response.json();
+            if (data.success) {
+                return data.data;
+            } else {
+                throw new Error(data || '获取行情失败');
+            }
+        } catch (error) {
+            console.error('获取行情失败:', error);
+        }
+    },
+
     async fetchTasks() {
         try {
             const response = await fetch(`${API_BASE}/api/tasks`);

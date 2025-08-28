@@ -6,10 +6,12 @@ import { api } from '../BackendAPI';
 
 // 账户信息页面
 const AccountPage = () => {
-    const [accountData, setAccountData] = useState({});
+    const [summary, setSummary] = useState({});
+    const [positions, setPositions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedAccount, setSelectedAccount] = useState('paper');
     const [selectedCurrency, setSelectedCurrency] = useState('USD');
+    const [tradeSession, setTradeSession] = useState('regular');
 
     const accountOptions = [
         { value: 'paper', label: '模拟账户' },
@@ -24,29 +26,93 @@ const AccountPage = () => {
     const currencySymbols = {
         'USD': '$',
         'HKD': 'HK$',
+        'US': '$',
+        'HK': 'HK$',
     };
 
-    // useEffect(() => {
-    //     fetchAccountData();
-    // }, [selectedAccount, selectedCurrency]);
+    const sessionMap = {
+        regular: '盘中',
+        pre_market: '盘前',
+        post_market: '盘后',
+        overnight: '夜盘'
+    }
+
+    // 根据当前时间，设置当前交易session
+    const refreshTradeSession = () => {
+        // 这里获取美国东部时间ET，要显式地获取
+        const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+
+
+        const hours = now.getHours();
+        const minutes = now.getMinutes();
+        const timeInMinutes = hours * 60 + minutes;
+
+        // 美股交易时间 (ET): 9:30 - 16:00, 16:00 - 20:00 (盘后), 20:00 - 04:00 (夜盘), 04:00 - 9:30 (盘前)
+        if (timeInMinutes >= 570 && timeInMinutes < 960) {
+            setTradeSession('regular'); // 正常交易时间
+            return 'current'
+        } else if (timeInMinutes >= 960 && timeInMinutes < 1200) {
+            setTradeSession('post_market'); // 盘后
+            return 'post_market'
+        } else if (timeInMinutes >= 1200 || timeInMinutes < 240) {
+            setTradeSession('post_market'); // 夜盘, 但是没有开通夜盘api时，获取不到这个信息，用盘后充数
+            return 'post_market'
+        } else {
+            setTradeSession('pre_market'); // 盘前
+            return 'pre_market'
+        }
+
+    };
 
     useEffect(() => {
         fetchAccountData();
     }, []);
 
+    // 每秒钟调用api.getQuotePrice刷新position里面的last done价格
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            if (positions.length === 0) return;
+            const ts = refreshTradeSession()
+            const symbols = positions.map(p => p.symbol);
+            try {
+                const priceMap = await api.getQuotePrice(selectedAccount, symbols);
+                const updatedPositions = positions.map(p => {
+                    const price = priceMap[p.symbol][ts + "_price"] || priceMap[p.symbol]["regular_price"];
+                    const pnl = (price - p.cost_price) * p.quantity
+                    return {
+                        ...p,
+                        cost_price: p.cost_price.toFixed(3),
+                        price: price.toFixed(3),
+                        pnl: pnl.toFixed(3),
+                    }
+                });
+                setPositions(updatedPositions);
+            } catch (error) {
+                console.error('获取最新价格失败:', error);
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [positions, selectedAccount]);
+
     const fetchAccountData = async () => {
         setLoading(true);
         try {
-            const [balanceResp, positionsResp, summaryResp] = await Promise.all([
-                api.getAccountBalance(selectedAccount, selectedCurrency),
+            const [positionsResp, summaryResp] = await Promise.all([
                 api.getAccountPostions(selectedAccount),
                 api.getAccountSummary(selectedAccount)
             ]);
-            const balance = balanceResp.balances[0] || {};
-            const positions = positionsResp.positions.channels[0].positions || {};
             const summary = summaryResp || {};
+            setSummary(summary);
 
-            setAccountData({ balance, positions, summary });
+            const pos = positionsResp.positions.channels[0].positions || {};
+            const positions = pos.map(p => {
+                return {
+                    ...p,
+                    market: p.symbol.includes('.') ? p.symbol.split('.')[1] : 'US'
+
+                }
+            })
+            setPositions(positions);
         } catch (error) {
             console.error('获取账户数据失败:', error);
         } finally {
@@ -57,12 +123,11 @@ const AccountPage = () => {
     if (loading) return <LoadingSpinner />;
 
     const asset_ratio = [
-        { name: '港股', value: accountData.summary.asset_ratio.HK, color: '#9333ea' },
-        { name: '美股', value: accountData.summary.asset_ratio.US, color: '#ea580c' },
-        { name: '现金', value: accountData.summary.asset_ratio.cash, color: '#3b82f6' }
+        { name: '港股', value: summary.asset_ratio.HK, color: '#9333ea' },
+        { name: '美股', value: summary.asset_ratio.US, color: '#ea580c' },
+        { name: '现金', value: summary.asset_ratio.cash, color: '#2ea46bff' }
     ];
 
-    console.log(accountData.positions)
 
     return (
         <div className="space-y-8">
@@ -96,7 +161,7 @@ const AccountPage = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-600 mb-1">总资产({selectedCurrency})</p>
-                            <p className="text-3xl font-bold text-blue-600 mb-2">{currencySymbols[selectedCurrency]}{accountData.summary.balances[selectedCurrency].net_assets}</p>
+                            <p className="text-3xl font-bold text-blue-600 mb-2">{currencySymbols[selectedCurrency]}{summary.balances[selectedCurrency].net_assets}</p>
                             {/* <div className="flex items-center text-sm">
                                 <ArrowUpRight className="w-3 h-3 mr-1 text-red-500" />
                                 <span className="text-red-500 font-medium">+5.2%</span>
@@ -112,9 +177,9 @@ const AccountPage = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-600 mb-1">可用现金({selectedCurrency})</p>
-                            <p className="text-3xl font-bold text-emerald-600 mb-2">{currencySymbols[selectedCurrency]}{accountData.balance.total_cash}</p>
+                            <p className="text-3xl font-bold text-emerald-600 mb-2">{currencySymbols[selectedCurrency]}{summary.balances[selectedCurrency].total_cash}</p>
                             <div className="flex items-center text-sm">
-                                <span className="text-gray-500">{(accountData.summary.stock_ratio * 100).toFixed(1)}% 仓位</span>
+                                <span className="text-gray-500">{(summary.stock_ratio * 100).toFixed(1)}% 仓位</span>
                             </div>
                         </div>
                         <div className="p-4 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl shadow-lg">
@@ -143,7 +208,7 @@ const AccountPage = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-600 mb-1">持仓数量</p>
-                            <p className="text-3xl font-bold text-purple-600 mb-2">{accountData.positions.length}</p>
+                            <p className="text-3xl font-bold text-purple-600 mb-2">{summary.total_positions}</p>
                             <div className="flex items-center text-sm">
                                 <span className="text-gray-500">只股票</span>
                             </div>
@@ -201,21 +266,21 @@ const AccountPage = () => {
                         <div className="flex justify-between items-center p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-2xl border border-purple-200">
                             <div>
                                 <p className="font-semibold text-purple-900">港股持仓</p>
-                                <p className="text-sm text-purple-700 mt-1">{accountData.summary.positions.HK.length}只 • {currencySymbols[selectedCurrency]}{accountData.summary.assets.HK.stock}</p>
+                                <p className="text-sm text-purple-700 mt-1">{summary.positions.HK.length}只 • {currencySymbols[selectedCurrency]}{summary.assets.HK.stock}</p>
                             </div>
                             <div className="text-right">
-                                <ValueDisplay value={1820} showSign className="text-lg" />
-                                <p className="text-sm text-red-500 mt-1">null% 今日</p>
+                                <ValueDisplay value={null} showSign className="text-lg" />
+                                <p className="text-sm text-gray-500 mt-1">null% 今日</p>
                             </div>
                         </div>
                         <div className="flex justify-between items-center p-4 bg-gradient-to-r from-orange-50 to-orange-100 rounded-2xl border border-orange-200">
                             <div>
                                 <p className="font-semibold text-orange-900">美股持仓</p>
-                                <p className="text-sm text-orange-700 mt-1">{accountData.summary.positions.US.length}只 • {currencySymbols[selectedCurrency]}{accountData.summary.assets.US.stock}</p>
+                                <p className="text-sm text-orange-700 mt-1">{summary.positions.US.length}只 • {currencySymbols[selectedCurrency]}{summary.assets.US.stock}</p>
                             </div>
                             <div className="text-right">
-                                <ValueDisplay value={-425} showSign className="text-lg" />
-                                <p className="text-sm text-green-500 mt-1">null% 今日</p>
+                                <ValueDisplay value={null} showSign className="text-lg" />
+                                <p className="text-sm text-gray-500 mt-1">null% 今日</p>
                             </div>
                         </div>
                     </div>
@@ -236,27 +301,24 @@ const AccountPage = () => {
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">名称</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">市场</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">持仓</th>
+                                <th className="text-left py-4 px-6 font-semibold text-gray-700">可用持仓</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">成本价</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">现价</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">盈亏</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {[
-                                { symbol: '00700.HK', name: '腾讯控股', market: 'HK', quantity: 100, cost: 425.5, price: 432.8, pnl: 730 },
-                                { symbol: '09988.HK', name: '阿里巴巴', market: 'HK', quantity: 200, cost: 102.3, price: 98.7, pnl: -720 },
-                                { symbol: 'AAPL', name: '苹果', market: 'US', quantity: 50, cost: 180.2, price: 185.4, pnl: 260 },
-                                { symbol: 'TSLA', name: '特斯拉', market: 'US', quantity: 30, cost: 245.8, price: 238.2, pnl: -228 }
-                            ].map((stock, index) => (
+                            {positions.map((stock, index) => (
                                 <tr key={index} className="border-b border-gray-100 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 transition-all duration-200">
                                     <td className="py-4 px-6 font-mono font-medium text-gray-900">{stock.symbol}</td>
-                                    <td className="py-4 px-6 font-medium text-gray-900">{stock.name}</td>
+                                    <td className="py-4 px-6 font-medium text-gray-900">{stock.symbol_name}</td>
                                     <td className="py-4 px-6">
                                         <StatusBadge status={stock.market} type="market" />
                                     </td>
                                     <td className="py-4 px-6 text-gray-700">{stock.quantity}</td>
-                                    <td className="py-4 px-6 text-gray-700">¥{stock.cost}</td>
-                                    <td className="py-4 px-6 text-gray-700">¥{stock.price}</td>
+                                    <td className="py-4 px-6 text-gray-700">{stock.available_quantity}</td>
+                                    <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.cost_price}</td>
+                                    <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.price}{stock.market === "US" && <span className='text-sm px-1 ml-1 bg-yellow-200 text-yellow-600 rounded-lg border-1'>{sessionMap[tradeSession]}</span>}</td>
                                     <td className="py-4 px-6">
                                         <ValueDisplay value={stock.pnl} showSign />
                                     </td>
