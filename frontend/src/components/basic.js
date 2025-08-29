@@ -147,12 +147,13 @@ export const ValueDisplay = ({ value, showSign = false, prefix = "¥", className
     }
     const numValue = typeof value === 'string' ? parseFloat(value) : value;
     const isPositive = numValue > 0;
+    const numAbs = Math.abs(numValue);
     const colorClass = isPositive ? 'text-red-600' : 'text-green-600';
-    const sign = showSign && isPositive ? '+' : '';
+    const sign = showSign ? (isPositive ? '+' : '-') : '';
 
     return (
         <span className={`font-bold ${colorClass} ${className}`}>
-            {sign}{prefix}{numValue.toLocaleString()}
+            {sign} {prefix}{numAbs.toLocaleString()}
         </span>
     );
 };

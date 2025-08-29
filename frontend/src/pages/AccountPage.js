@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, TrendingUp, BarChart3, Wallet, Target, RefreshCw, Building, ArrowUpRight } from 'lucide-react';
-import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ZAxis } from 'recharts';
 import { CustomSelect, AnimatedButton, GlassCard, LoadingSpinner, ValueDisplay, StatusBadge } from '../components/basic';
 import { api } from '../BackendAPI';
 
@@ -12,6 +12,7 @@ const AccountPage = () => {
     const [selectedAccount, setSelectedAccount] = useState('paper');
     const [selectedCurrency, setSelectedCurrency] = useState('USD');
     const [tradeSession, setTradeSession] = useState('regular');
+    const [marketPnl, setmarketPnl] = useState({ US: 0, HK: 0 });
 
     const accountOptions = [
         { value: 'paper', label: '模拟账户' },
@@ -29,6 +30,10 @@ const AccountPage = () => {
         'US': '$',
         'HK': 'HK$',
     };
+
+    const stockNameMap = {
+        'SMIC': '中芯国际',
+    }
 
     const sessionMap = {
         regular: '盘中',
@@ -66,36 +71,49 @@ const AccountPage = () => {
 
     useEffect(() => {
         fetchAccountData();
-    }, []);
+    }, [selectedAccount]);
 
-    // 每秒钟调用api.getQuotePrice刷新position里面的last done价格
+    // 调用api.getQuotePrice刷新position里面的last done价格
+    const refreshQuote = async (pos = null) => {
+        pos = pos || positions
+        if (pos.length === 0) return;
+        const ts = refreshTradeSession()
+        const mpnl = { US: 0, HK: 0 };
+        const symbols = pos.map(p => p.symbol);
+        try {
+            const priceMap = await api.getQuotePrice(selectedAccount, symbols);
+            const updatedPositions = pos.map(p => {
+                const price = priceMap[p.symbol][ts + "_price"] || priceMap[p.symbol]["regular_price"];
+                const pnl = (price - p.cost_price) * p.quantity
+                mpnl[p.market] += pnl;
+                return {
+                    ...p,
+                    cost_price: p.cost_price,
+                    price: price,
+                    pnl: pnl,
+                }
+            });
+            setmarketPnl(mpnl);
+            console.log(updatedPositions)
+            setPositions(updatedPositions);
+        } catch (error) {
+            console.error('获取最新价格失败:', error);
+        }
+    }
+
+    // 每隔一段时间 自动调用refreshquote刷新行情
     useEffect(() => {
-        const interval = setInterval(async () => {
-            if (positions.length === 0) return;
-            const ts = refreshTradeSession()
-            const symbols = positions.map(p => p.symbol);
-            try {
-                const priceMap = await api.getQuotePrice(selectedAccount, symbols);
-                const updatedPositions = positions.map(p => {
-                    const price = priceMap[p.symbol][ts + "_price"] || priceMap[p.symbol]["regular_price"];
-                    const pnl = (price - p.cost_price) * p.quantity
-                    return {
-                        ...p,
-                        cost_price: p.cost_price.toFixed(3),
-                        price: price.toFixed(3),
-                        pnl: pnl.toFixed(3),
-                    }
-                });
-                setPositions(updatedPositions);
-            } catch (error) {
-                console.error('获取最新价格失败:', error);
-            }
-        }, 1000);
+        // refreshQuote();
+        const interval = setInterval(() => {
+            refreshQuote();
+        }, 5000); // 每60秒刷新一次
         return () => clearInterval(interval);
-    }, [positions, selectedAccount]);
+    }, [positions]);
 
     const fetchAccountData = async () => {
         setLoading(true);
+        setmarketPnl({ US: 0, HK: 0 });
+        setPositions([]);
         try {
             const [positionsResp, summaryResp] = await Promise.all([
                 api.getAccountPostions(selectedAccount),
@@ -113,6 +131,7 @@ const AccountPage = () => {
                 }
             })
             setPositions(positions);
+            refreshQuote(positions)
         } catch (error) {
             console.error('获取账户数据失败:', error);
         } finally {
@@ -123,9 +142,9 @@ const AccountPage = () => {
     if (loading) return <LoadingSpinner />;
 
     const asset_ratio = [
-        { name: '港股', value: summary.asset_ratio.HK, color: '#9333ea' },
-        { name: '美股', value: summary.asset_ratio.US, color: '#ea580c' },
-        { name: '现金', value: summary.asset_ratio.cash, color: '#2ea46bff' }
+        { name: '港股', value: summary.asset_ratio?.HK || 0, color: '#9333ea' },
+        { name: '美股', value: summary.asset_ratio?.US || 0, color: '#ea580c' },
+        { name: '现金', value: summary.asset_ratio?.cash || 0, color: '#2ea46bff' }
     ];
 
 
@@ -161,7 +180,7 @@ const AccountPage = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-600 mb-1">总资产({selectedCurrency})</p>
-                            <p className="text-3xl font-bold text-blue-600 mb-2">{currencySymbols[selectedCurrency]}{summary.balances[selectedCurrency].net_assets}</p>
+                            <p className="text-3xl font-bold text-blue-600 mb-2">{currencySymbols[selectedCurrency]}{summary.balances ? summary.balances[selectedCurrency]?.net_assets : "-"}</p>
                             {/* <div className="flex items-center text-sm">
                                 <ArrowUpRight className="w-3 h-3 mr-1 text-red-500" />
                                 <span className="text-red-500 font-medium">+5.2%</span>
@@ -177,7 +196,7 @@ const AccountPage = () => {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-sm text-gray-600 mb-1">可用现金({selectedCurrency})</p>
-                            <p className="text-3xl font-bold text-emerald-600 mb-2">{currencySymbols[selectedCurrency]}{summary.balances[selectedCurrency].total_cash}</p>
+                            <p className="text-3xl font-bold text-emerald-600 mb-2">{currencySymbols[selectedCurrency]}{summary.balances ? summary.balances[selectedCurrency]?.total_cash : "-"}</p>
                             <div className="flex items-center text-sm">
                                 <span className="text-gray-500">{(summary.stock_ratio * 100).toFixed(1)}% 仓位</span>
                             </div>
@@ -266,21 +285,21 @@ const AccountPage = () => {
                         <div className="flex justify-between items-center p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-2xl border border-purple-200">
                             <div>
                                 <p className="font-semibold text-purple-900">港股持仓</p>
-                                <p className="text-sm text-purple-700 mt-1">{summary.positions.HK.length}只 • {currencySymbols[selectedCurrency]}{summary.assets.HK.stock}</p>
+                                <p className="text-sm text-purple-700 mt-1">{summary.positions?.HK.length}只 • {currencySymbols.HK}{summary.assets?.HK.stock}</p>
                             </div>
                             <div className="text-right">
-                                <ValueDisplay value={null} showSign className="text-lg" />
-                                <p className="text-sm text-gray-500 mt-1">null% 今日</p>
+                                <ValueDisplay value={marketPnl.HK} prefix={currencySymbols.HK} showSign className="text-lg" />
+                                {/* <p className="text-sm text-gray-500 mt-1">null% 今日</p> */}
                             </div>
                         </div>
                         <div className="flex justify-between items-center p-4 bg-gradient-to-r from-orange-50 to-orange-100 rounded-2xl border border-orange-200">
                             <div>
                                 <p className="font-semibold text-orange-900">美股持仓</p>
-                                <p className="text-sm text-orange-700 mt-1">{summary.positions.US.length}只 • {currencySymbols[selectedCurrency]}{summary.assets.US.stock}</p>
+                                <p className="text-sm text-orange-700 mt-1">{summary.positions?.US.length}只 • {currencySymbols.US}{summary.assets?.US.stock}</p>
                             </div>
                             <div className="text-right">
-                                <ValueDisplay value={null} showSign className="text-lg" />
-                                <p className="text-sm text-gray-500 mt-1">null% 今日</p>
+                                <ValueDisplay value={marketPnl.US} prefix={currencySymbols.US} showSign className="text-lg" />
+                                {/* <p className="text-sm text-gray-500 mt-1">null% 今日</p> */}
                             </div>
                         </div>
                     </div>
@@ -311,7 +330,7 @@ const AccountPage = () => {
                             {positions.map((stock, index) => (
                                 <tr key={index} className="border-b border-gray-100 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 transition-all duration-200">
                                     <td className="py-4 px-6 font-mono font-medium text-gray-900">{stock.symbol}</td>
-                                    <td className="py-4 px-6 font-medium text-gray-900">{stock.symbol_name}</td>
+                                    <td className="py-4 px-6 font-medium text-gray-900">{stockNameMap[stock.symbol_name] || stock.symbol_name}</td>
                                     <td className="py-4 px-6">
                                         <StatusBadge status={stock.market} type="market" />
                                     </td>
@@ -320,7 +339,7 @@ const AccountPage = () => {
                                     <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.cost_price}</td>
                                     <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.price}{stock.market === "US" && <span className='text-sm px-1 py-[2px] ml-1 bg-blue-200 text-blue-600 rounded-md'>{sessionMap[tradeSession]}</span>}</td>
                                     <td className="py-4 px-6">
-                                        <ValueDisplay value={stock.pnl} showSign />
+                                        <ValueDisplay value={stock.pnl} prefix={currencySymbols[stock.market]} showSign />
                                     </td>
                                 </tr>
                             ))}
