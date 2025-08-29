@@ -296,6 +296,35 @@ class AccountManager:
             logger.error(f"检查交易权限失败: {symbol}, 错误: {e}")
             return False
 
+    def get_quotes(self, symbol_list: List[str]) -> Dict[str, Dict]:
+
+        balance_USD = self.trade_context.account_balance("USD")[0]
+        balance_HKD = self.trade_context.account_balance("HKD")[0]
+        usd_cash = balance_USD.total_cash
+        hkd_cash = balance_HKD.total_cash
+        # 计算汇率，这里直接依照长桥的不同货币单位数据算出汇率
+        ratio = float(hkd_cash / usd_cash) if usd_cash > 0 else None
+
+        quote_list = self.quote_context.quote(symbol_list)
+        prices = {}
+        for quote in quote_list:
+            symbol = quote.symbol
+            prices[symbol] = {
+                "regular_price": quote.last_done,
+                "pre_market_price": (
+                    quote.pre_market_quote.last_done if quote.pre_market_quote else None
+                ),
+                "post_market_price": (
+                    quote.post_market_quote.last_done
+                    if quote.post_market_quote
+                    else None
+                ),
+                "overnight_price": (
+                    quote.overnight_quote.last_done if quote.overnight_quote else None
+                ),
+            }
+        return {"ratio": ratio, "prices": prices}
+
 
 try:
     live_account_manager = AccountManager(is_paper=False)

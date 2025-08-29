@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, BarChart3, Wallet, Target, RefreshCw, Building, ArrowUpRight } from 'lucide-react';
+import { DollarSign, Loader2, BarChart3, Wallet, Target, RefreshCw, Building, ArrowUpRight } from 'lucide-react';
 import { Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ZAxis } from 'recharts';
 import { CustomSelect, AnimatedButton, GlassCard, LoadingSpinner, ValueDisplay, StatusBadge } from '../components/basic';
 import { api } from '../BackendAPI';
@@ -13,6 +13,8 @@ const AccountPage = () => {
     const [selectedCurrency, setSelectedCurrency] = useState('USD');
     const [tradeSession, setTradeSession] = useState('regular');
     const [marketPnl, setmarketPnl] = useState({ US: 0, HK: 0 });
+    const [totalPnl, setTotalPnl] = useState(0);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const accountOptions = [
         { value: 'paper', label: '模拟账户' },
@@ -71,17 +73,20 @@ const AccountPage = () => {
 
     useEffect(() => {
         fetchAccountData();
-    }, [selectedAccount]);
+    }, [selectedAccount, selectedCurrency]);
 
     // 调用api.getQuotePrice刷新position里面的last done价格
     const refreshQuote = async (pos = null) => {
+        setIsRefreshing(true)
         pos = pos || positions
         if (pos.length === 0) return;
         const ts = refreshTradeSession()
         const mpnl = { US: 0, HK: 0 };
         const symbols = pos.map(p => p.symbol);
         try {
-            const priceMap = await api.getQuotePrice(selectedAccount, symbols);
+            const data = await api.getQuotePrice(selectedAccount, symbols);
+            const priceMap = data.prices
+            const r = data.ratio
             const updatedPositions = pos.map(p => {
                 const price = priceMap[p.symbol][ts + "_price"] || priceMap[p.symbol]["regular_price"];
                 const pnl = (price - p.cost_price) * p.quantity
@@ -93,9 +98,13 @@ const AccountPage = () => {
                     pnl: pnl,
                 }
             });
+
+
+            const tPnl = selectedCurrency === "USD" ? mpnl.US + mpnl.HK / r : mpnl.HK + mpnl.US * r
             setmarketPnl(mpnl);
-            console.log(updatedPositions)
+            setTotalPnl(tPnl)
             setPositions(updatedPositions);
+            setIsRefreshing(false)
         } catch (error) {
             console.error('获取最新价格失败:', error);
         }
@@ -114,6 +123,7 @@ const AccountPage = () => {
         setLoading(true);
         setmarketPnl({ US: 0, HK: 0 });
         setPositions([]);
+        setTotalPnl(0)
         try {
             const [positionsResp, summaryResp] = await Promise.all([
                 api.getAccountPostions(selectedAccount),
@@ -147,12 +157,11 @@ const AccountPage = () => {
         { name: '现金', value: summary.asset_ratio?.cash || 0, color: '#2ea46bff' }
     ];
 
-
     return (
         <div className="space-y-8">
             <div className="flex justify-between items-center">
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-500 to-gray-600 bg-clip-text text-transparent">
-                    账户概览
+                    账户资产
                 </h1>
                 <div className="flex gap-4">
                     <CustomSelect
@@ -181,10 +190,20 @@ const AccountPage = () => {
                         <div>
                             <p className="text-sm text-gray-600 mb-1">总资产({selectedCurrency})</p>
                             <p className="text-3xl font-bold text-blue-600 mb-2">{currencySymbols[selectedCurrency]}{summary.balances ? summary.balances[selectedCurrency]?.net_assets : "-"}</p>
-                            {/* <div className="flex items-center text-sm">
-                                <ArrowUpRight className="w-3 h-3 mr-1 text-red-500" />
-                                <span className="text-red-500 font-medium">+5.2%</span>
-                            </div> */}
+                            <div className="flex items-center text-sm">
+                                {totalPnl > 0 ? (
+                                    <>
+                                        <span className="text-red-500 font-medium">+{(totalPnl).toFixed(2)}</span>
+                                        <ArrowUpRight className="w-3 h-3 ml-1 text-red-500" />
+                                    </>
+                                ) : (totalPnl < 0 ? (
+                                    <>
+                                        <span className="text-emerald-500 font-medium">{(totalPnl).toFixed(2)}</span>
+                                        <ArrowUpRight className="w-3 h-3 ml-1 text-emerald-500" />
+                                    </>
+                                ) : <span className="text-gray-500">0.00</span>
+                                )}
+                            </div>
                         </div>
                         <div className="p-4 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl shadow-lg">
                             <Wallet className="w-8 h-8 text-white" />
@@ -337,7 +356,10 @@ const AccountPage = () => {
                                     <td className="py-4 px-6 text-gray-700">{stock.quantity}</td>
                                     <td className="py-4 px-6 text-gray-700">{stock.available_quantity}</td>
                                     <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.cost_price}</td>
-                                    <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.price}{stock.market === "US" && <span className='text-sm px-1 py-[2px] ml-1 bg-blue-200 text-blue-600 rounded-md'>{sessionMap[tradeSession]}</span>}</td>
+                                    <td className="py-4 px-6 text-gray-700">
+                                        {isRefreshing && <Loader2 className="animate-spin inline-block mr-1" size={16} />}
+                                        {currencySymbols[stock.market]}{stock.price}{stock.market === "US" && <span className='text-sm px-1 py-[2px] ml-1 bg-blue-200 text-blue-600 rounded-md'>{sessionMap[tradeSession]}</span>}
+                                    </td>
                                     <td className="py-4 px-6">
                                         <ValueDisplay value={stock.pnl} prefix={currencySymbols[stock.market]} showSign />
                                     </td>

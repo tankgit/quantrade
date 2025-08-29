@@ -12,7 +12,7 @@ const App = () => {
   const [currentPage, setCurrentPage] = useState('account');
 
   const pages = [
-    { id: 'account', name: '账户信息', icon: User, component: AccountPage },
+    { id: 'account', name: '账户资产', icon: User, component: AccountPage },
     { id: 'tasks', name: '任务管理', icon: Activity, component: TaskPage },
     { id: 'strategy', name: '策略分析', icon: BarChart3, component: StrategyPage },
     { id: 'status', name: '系统状态', icon: Settings, component: StatusPage }

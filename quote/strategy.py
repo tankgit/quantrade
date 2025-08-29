@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from longport.openapi import QuoteContext, TradeContext, SecurityQuote
 from .config import longport_config
+from .trade import TradingTimeManager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,30 +30,40 @@ class BaseStrategy(ABC):
             logger.error(f"初始化上下文失败: {e}")
             raise
 
+    def get_quotes(self, symbol_list: List[str]) -> Dict[str, Dict]:
+        quote_list = self.quote_context.quote(symbol_list)
+        price = {}
+        for quote in quote_list:
+            symbol = quote.symbol
+            price[symbol] = {
+                "regular_price": quote.last_done,
+                "pre_market_price": (
+                    quote.pre_market_quote.last_done if quote.pre_market_quote else None
+                ),
+                "post_market_price": (
+                    quote.post_market_quote.last_done
+                    if quote.post_market_quote
+                    else None
+                ),
+                "overnight_price": (
+                    quote.overnight_quote.last_done if quote.overnight_quote else None
+                ),
+            }
+        return price
+
     def get_current_price(self, symbol: str) -> Optional[Decimal]:
         """获取当前股票价格，根据不同时段返回相应价格"""
         try:
-            quotes = self.quote_context.quote([symbol])
+            quotes = self.get_quotes([symbol])
             if not quotes:
                 return None
 
-            quote = quotes[0]
+            quote = quotes[symbol]
+            curr_session = TradingTimeManager.get_us_trading_session()
+            if not curr_session:
+                return None
 
-            # 根据不同时段获取价格
-            if quote.pre_market_quote and quote.pre_market_quote.last_done:
-                # 盘前
-                current_price = quote.pre_market_quote.last_done
-            elif quote.post_market_quote and quote.post_market_quote.last_done:
-                # 盘后
-                current_price = quote.post_market_quote.last_done
-            elif quote.overnight_quote and quote.overnight_quote.last_done:
-                # 夜盘
-                current_price = quote.overnight_quote.last_done
-            else:
-                # 盘中或默认
-                current_price = quote.last_done
-
-            self.last_prices[symbol] = current_price
+            current_price = quote[curr_session + "_price"]
             return current_price
 
         except Exception as e:

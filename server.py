@@ -167,32 +167,13 @@ async def get_stock_price(account_type: str, symbols: str):
     """
     try:
         symbol_list = [x.strip() for x in symbols.split(",")] if symbols else []
-        print(symbol_list)
         is_paper = account_type.lower() == "paper"
         account_manager = get_account_manager(is_paper=is_paper)
-        quote_list = account_manager.quote_context.quote(symbol_list)
-        print(quote_list)
-        price = {}
-        for quote in quote_list:
-            symbol = quote.symbol
-            price[symbol] = {
-                "regular_price": quote.last_done,
-                "pre_market_price": (
-                    quote.pre_market_quote.last_done if quote.pre_market_quote else None
-                ),
-                "post_market_price": (
-                    quote.post_market_quote.last_done
-                    if quote.post_market_quote
-                    else None
-                ),
-                "overnight_price": (
-                    quote.overnight_quote.last_done if quote.overnight_quote else None
-                ),
-            }
-        return {"success": True, "data": price}
+        data = account_manager.get_quotes(symbol_list)
+
+        return {"success": True, "data": data}
 
     except Exception as e:
-        raise
         logger.error(f"获取股票价格失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

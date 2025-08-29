@@ -1,4 +1,7 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
+from datetime import datetime, time
+
+from pytz import timezone
 from decimal import Decimal
 from longport.openapi import (
     TradeContext,
@@ -13,6 +16,95 @@ from .db import db_manager, OperationType
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class TradingTimeManager:
+    """交易时间管理器"""
+
+    # 美股交易时间 (ET)
+    US_PREMARKET_START = time(4, 0)  # 04:00 ET
+    US_PREMARKET_END = time(9, 30)  # 09:30 ET
+    US_MARKET_START = time(9, 30)  # 09:30 ET
+    US_MARKET_END = time(16, 0)  # 16:00 ET
+    US_POSTMARKET_START = time(16, 0)  # 16:00 ET
+    US_POSTMARKET_END = time(20, 0)  # 20:00 ET
+    US_OVERNIGHT_START = time(20, 0)  # 20:00 ET
+    US_OVERNIGHT_END = time(4, 0)  # 04:00 ET (next day)
+
+    # 港股交易时间 (HKT)
+    HK_MORNING_START = time(9, 30)  # 09:30 HKT
+    HK_MORNING_END = time(12, 0)  # 12:00 HKT
+    HK_AFTERNOON_START = time(13, 0)  # 13:00 HKT
+    HK_AFTERNOON_END = time(16, 0)  # 16:00 HKT
+
+    @classmethod
+    def is_trading_time(cls, symbol: str):
+        """检查是否在交易时间内"""
+        try:
+            if symbol.endswith(".US"):
+                current_time = datetime.now(timezone("US/Eastern")).time()
+                return cls.is_us_trading_time(
+                    current_time, {"premarket", "regular", "postmarket", "overnight"}
+                )
+            elif symbol.endswith(".HK"):
+                current_time = datetime.now(timezone("Asia/Hong_Kong")).time()
+                return cls.is_hk_trading_time(current_time)
+            else:
+                logger.warning(f"未知市场代码: {symbol}")
+                return False
+        except Exception as e:
+            logger.error(f"检查交易时间失败: {e}")
+            return False
+
+    @classmethod
+    def get_us_trading_session(cls, current_time: time = None) -> Optional[str]:
+        """获取当前美股交易时段"""
+        current_time = current_time or datetime.now(timezone("US/Eastern")).time()
+        if cls.US_PREMARKET_START <= current_time < cls.US_PREMARKET_END:
+            return "premarket"
+        elif cls.US_MARKET_START <= current_time < cls.US_MARKET_END:
+            return "regular"
+        elif cls.US_POSTMARKET_START <= current_time < cls.US_POSTMARKET_END:
+            return "postmarket"
+        elif (
+            current_time >= cls.US_OVERNIGHT_START
+            or current_time < cls.US_OVERNIGHT_END
+        ):
+            # 因为跨天了，所以跟别的判断条件不同
+            return "overnight"
+        else:
+            return None
+
+    @classmethod
+    def is_us_trading_time(cls, current_time: time, trading_sessions: Set[str]) -> bool:
+        """检查是否在美股交易时间内"""
+        if "premarket" in trading_sessions:
+            if cls.US_PREMARKET_START <= current_time < cls.US_PREMARKET_END:
+                return True
+
+        if "regular" in trading_sessions:
+            if cls.US_MARKET_START <= current_time < cls.US_MARKET_END:
+                return True
+
+        if "postmarket" in trading_sessions:
+            if cls.US_POSTMARKET_START <= current_time < cls.US_POSTMARKET_END:
+                return True
+
+        if "overnight" in trading_sessions:
+            if (
+                current_time >= cls.US_OVERNIGHT_START
+                or current_time < cls.US_OVERNIGHT_END
+            ):
+                return True
+
+        return False
+
+    @classmethod
+    def is_hk_trading_time(cls, current_time: time) -> bool:
+        """检查是否在港股交易时间内"""
+        return (cls.HK_MORNING_START <= current_time < cls.HK_MORNING_END) or (
+            cls.HK_AFTERNOON_START <= current_time < cls.HK_AFTERNOON_END
+        )
 
 
 class SubmitOrderResponse:
