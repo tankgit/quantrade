@@ -61,11 +61,11 @@ class TradingTimeManager:
         """获取当前美股交易时段"""
         current_time = current_time or datetime.now(timezone("US/Eastern")).time()
         if cls.US_PREMARKET_START <= current_time < cls.US_PREMARKET_END:
-            return "premarket"
+            return "pre_market"
         elif cls.US_MARKET_START <= current_time < cls.US_MARKET_END:
             return "regular"
         elif cls.US_POSTMARKET_START <= current_time < cls.US_POSTMARKET_END:
-            return "postmarket"
+            return "post_market"
         elif (
             current_time >= cls.US_OVERNIGHT_START
             or current_time < cls.US_OVERNIGHT_END

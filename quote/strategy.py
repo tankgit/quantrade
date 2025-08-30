@@ -19,7 +19,7 @@ class BaseStrategy(ABC):
         self.quote_context = None
         self.trade_context = None
         self.positions = {}  # 持仓信息缓存
-        self.last_prices = {}  # 最后价格缓存
+        self.price_history = {}  # 价格历史缓存
 
     def initialize_contexts(self):
         """初始化交易和报价上下文"""
@@ -96,6 +96,14 @@ class BaseStrategy(ABC):
         adjusted_quantity = (base_quantity // lot_size) * lot_size
 
         return max(adjusted_quantity, lot_size if adjusted_quantity > 0 else 0)
+
+    @abstractmethod
+    @property
+    def cache_data(self) -> Dict:
+        """
+        获取策略相关缓存数据
+        """
+        pass
 
     @abstractmethod
     def should_buy(self, symbol: str, data: Dict) -> Tuple[bool, Decimal]:
@@ -175,6 +183,19 @@ class SimpleMAStrategy(BaseStrategy):
         self.long_period = long_period
         self.buy_amount = buy_amount  # 每次买入金额
         self.price_history = {}  # 价格历史记录
+        self.short_ma_history = {}
+        self.long_ma_history = {}
+
+    @property
+    def cache_data(self) -> Dict:
+        """
+        获取策略相关缓存数据
+        """
+        return {
+            "price_history": self.price_history,
+            "short_ma_history": self.short_ma_history,
+            "long_ma_history": self.long_ma_history,
+        }
 
     def update_price_history(self, symbol: str, price: Decimal):
         """更新价格历史"""
@@ -187,6 +208,16 @@ class SimpleMAStrategy(BaseStrategy):
         max_history = self.long_period * 2
         if len(self.price_history[symbol]) > max_history:
             self.price_history[symbol] = self.price_history[symbol][-max_history:]
+
+    def update_ma_history(self, symbol: str, short_ma: float, long_ma: float):
+        """更新移动平均线历史"""
+        if symbol not in self.short_ma_history:
+            self.short_ma_history[symbol] = []
+        if symbol not in self.long_ma_history:
+            self.long_ma_history[symbol] = []
+
+        self.short_ma_history[symbol].append(short_ma)
+        self.long_ma_history[symbol].append(long_ma)
 
     def calculate_ma(self, symbol: str, period: int) -> Optional[float]:
         """计算移动平均线"""
@@ -211,6 +242,7 @@ class SimpleMAStrategy(BaseStrategy):
         # 计算移动平均线
         short_ma = self.calculate_ma(symbol, self.short_period)
         long_ma = self.calculate_ma(symbol, self.long_period)
+        self.update_ma_history(symbol, short_ma, long_ma)
 
         if short_ma is None or long_ma is None:
             return False, Decimal("0")

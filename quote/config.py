@@ -6,6 +6,13 @@ from longport.openapi import Config
 load_dotenv()
 
 
+class ServerConfig:
+    def __init__(self):
+        self.task_log_dir = os.getenv("TASK_LOG_DIR")
+        if not os.path.exists(self.task_log_dir):
+            os.makedirs(self.task_log_dir)
+
+
 class LongPortConfig:
     def __init__(self):
         self.quote_ws_url = os.getenv("LONGPORT_QUOTE_URL")
@@ -57,5 +64,6 @@ class DatabaseConfig:
 
 
 # 全局配置实例
+server_config = ServerConfig()
 longport_config = LongPortConfig()
 db_config = DatabaseConfig()

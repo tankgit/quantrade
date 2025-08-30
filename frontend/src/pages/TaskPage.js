@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Play, Pause, Square, Plus, Eye, RefreshCw, Clock } from 'lucide-react';
+import { Activity, Play, Pause, Square, Plus, Eye, RefreshCw, Clock, X } from 'lucide-react';
 import { CustomSelect, CustomInput, AnimatedButton, GlassCard, StatusBadge } from '../components/basic';
 import { api } from '../BackendAPI';
 
@@ -76,7 +76,9 @@ const TaskPage = () => {
 
     useEffect(() => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        console.log(logs)
     }, [logs]);
+
 
     return (
         <div className="space-y-8">
@@ -235,7 +237,8 @@ const TaskPage = () => {
                         ) : (
                             logs.map((log, index) => (
                                 <div key={index} className="text-green-400 mb-2 hover:bg-gray-800/50 p-1 rounded transition-colors">
-                                    <span className="text-gray-500">[{log.created_at}]</span> {log.operation}
+                                    <span className="text-gray-500">[{log.created_at}]</span><span className="text-orange-500">[{log.symbol}] </span><span className={`${log.operation == "buy" ? "text-red-500" : "text-green-500"}`}>{log.operation.toUpperCase()}</span>
+                                    <span className="text-yellow-300 font-bold"> {log.quantity}</span> <span className="text-gray-500">x</span> <span className="text-blue-400 font-bold">{log.price}</span>
                                 </div>
                             ))
                         )}

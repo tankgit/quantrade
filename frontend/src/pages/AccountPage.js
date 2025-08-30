@@ -339,10 +339,10 @@ const AccountPage = () => {
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">名称</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">市场</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">持仓</th>
-                                <th className="text-left py-4 px-6 font-semibold text-gray-700">可用持仓</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">成本价</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">现价</th>
                                 <th className="text-left py-4 px-6 font-semibold text-gray-700">盈亏</th>
+                                <th className="text-left py-4 px-6 font-semibold text-gray-700">盈亏比</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -354,14 +354,16 @@ const AccountPage = () => {
                                         <StatusBadge status={stock.market} type="market" />
                                     </td>
                                     <td className="py-4 px-6 text-gray-700">{stock.quantity}</td>
-                                    <td className="py-4 px-6 text-gray-700">{stock.available_quantity}</td>
-                                    <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.cost_price}</td>
+                                    <td className="py-4 px-6 text-gray-700">{currencySymbols[stock.market]}{stock.cost_price?.toFixed(3)}</td>
                                     <td className="py-4 px-6 text-gray-700">
                                         {isRefreshing && <Loader2 className="animate-spin inline-block mr-1" size={16} />}
-                                        {currencySymbols[stock.market]}{stock.price}{stock.market === "US" && <span className='text-sm px-1 py-[2px] ml-1 bg-blue-200 text-blue-600 rounded-md'>{sessionMap[tradeSession]}</span>}
+                                        {currencySymbols[stock.market]}{stock.price?.toFixed(3)}{stock.market === "US" && <span className='text-sm px-1 py-[2px] ml-1 bg-blue-200 text-blue-600 rounded-md'>{sessionMap[tradeSession]}</span>}
                                     </td>
                                     <td className="py-4 px-6">
                                         <ValueDisplay value={stock.pnl} prefix={currencySymbols[stock.market]} showSign />
+                                    </td>
+                                    <td className="py-4 px-6">
+                                        <ValueDisplay value={stock.pnl / (stock.cost_price * stock.quantity) * 100} prefix="" suffix="%" showSign />
                                     </td>
                                 </tr>
                             ))}

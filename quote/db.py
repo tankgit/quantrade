@@ -1,4 +1,5 @@
 from sqlalchemy import (
+    JSON,
     create_engine,
     Column,
     Integer,
@@ -53,9 +54,10 @@ class QuoteTask(Base):
     task_id = Column(Integer, primary_key=True, autoincrement=True)
     account = Column(Enum(AccountType), nullable=False)
     market = Column(Enum(MarketType), nullable=False)
-    symbols = Column(Text, nullable=False)  # JSON字符串格式存储股票代码列表
+    symbols = Column(JSON, default="[]")  # JSON字符串格式存储股票代码列表
     strategy = Column(String(100), nullable=False)
     status = Column(Enum(TaskStatus), default=TaskStatus.STOPPED)
+    run_data = Column(JSON, default="{}")
     created_at = Column(DateTime, default=func.now())
 
     # 关联日志记录
@@ -219,6 +221,7 @@ class DatabaseManager:
                 symbols=json.dumps(symbols),
                 strategy=strategy,
                 status=TaskStatus.STOPPED,
+                run_data="{}",
             )
             session.add(task)
             session.commit()
@@ -281,6 +284,30 @@ class DatabaseManager:
             if session:
                 session.rollback()
             logger.error(f"更新任务状态失败: {e}")
+            return False
+        finally:
+            if session:
+                session.close()
+
+    def update_task_data(self, task_id: int, run_data: dict):
+        """更新任务数据"""
+        session = None
+        try:
+            self.ensure_connection()
+            session = self.get_session()
+            task = session.query(QuoteTask).filter(QuoteTask.task_id == task_id).first()
+            if task:
+                task.run_data = json.dumps(run_data)
+                session.commit()
+                logger.info(f"任务数据更新成功: ID={task_id}")
+                return True
+            else:
+                logger.warning(f"任务不存在: ID={task_id}")
+                return False
+        except Exception as e:
+            if session:
+                session.rollback()
+            logger.error(f"更新任务数据失败: {e}")
             return False
         finally:
             if session:
@@ -352,7 +379,7 @@ class DatabaseManager:
             return (
                 session.query(QuoteTaskLog)
                 .filter(QuoteTaskLog.task_id == task_id)
-                .order_by(QuoteTaskLog.created_at.desc())
+                .order_by(QuoteTaskLog.created_at.desce())
                 .all()
             )
         except Exception as e:

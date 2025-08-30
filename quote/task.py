@@ -1,12 +1,15 @@
 from typing import Dict, List, Optional, Set
 from datetime import datetime, time
+import os
+import json
 from threading import Thread, Event
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import time as time_module
 import logging
 
-from .db import db_manager, AccountType, MarketType, TaskStatus
+from .config import server_config
+from .db import db_manager, AccountType, MarketType, TaskStatus, OperationType
 from .strategy import get_strategy, list_available_strategies
 from .trade import TradingTimeManager, get_trade_manager
 
@@ -21,6 +24,29 @@ class TaskManager:
         self.running_tasks = {}  # task_id -> {'thread': Thread, 'stop_event': Event}
         self.scheduler.start()
         logger.info("任务管理器初始化完成")
+
+    def record_task_log_file(
+        self, task_id: int, action: str, log_data: dict = None
+    ) -> bool:
+        """记录任务日志到文件"""
+        try:
+            date = datetime.now().strftime("%Y-%m-%d")
+            log_file = os.path.join(
+                server_config.task_log_dir, f"{date}_task_{task_id}.log"
+            )
+            log_line = f"[{date}][{action}]"
+            if log_data:
+                log_line += f"{json.dumps(log_data)}"
+
+            with open(log_file, "a+") as f:
+                f.write(log_line + "\n")
+
+            logger.info(f"任务日志记录成功: {log_file}")
+            return True
+
+        except Exception as e:
+            logger.error(f"记录任务日志失败: {e}")
+            return False
 
     def create_task(
         self,
@@ -60,6 +86,16 @@ class TaskManager:
             logger.info(
                 f"任务创建成功: ID={task_id}, 账户={account}, 市场={market}, 策略={strategy}"
             )
+            self.record_task_log_file(
+                task_id,
+                "create",
+                {
+                    "account": account,
+                    "market": market,
+                    "strategy": strategy,
+                    "symbols": symbols,
+                },
+            )
             return task_id
 
         except Exception as e:
@@ -93,12 +129,14 @@ class TaskManager:
             # 创建并启动任务线程
             if trading_sessions and task.market == MarketType.US:
                 # 美股按时段运行
+                logger.info(f"时段任务:{trading_sessions}, {task}")
                 thread = Thread(
                     target=self._run_scheduled_task,
                     args=(task_id, stop_event, set(trading_sessions)),
                 )
             else:
                 # 持续运行
+                logger.info(f"持续任务:{trading_sessions}, {task}")
                 thread = Thread(
                     target=self._run_continuous_task, args=(task_id, stop_event)
                 )
@@ -128,6 +166,7 @@ class TaskManager:
                 del self.running_tasks[task_id]
 
             db_manager.update_task_status(task_id, TaskStatus.PAUSED)
+            self.record_task_log_file(task_id, "pause")
             logger.info(f"任务暂停成功: {task_id}")
             return True
 
@@ -144,6 +183,7 @@ class TaskManager:
                 del self.running_tasks[task_id]
 
             db_manager.update_task_status(task_id, TaskStatus.STOPPED)
+            self.record_task_log_file(task_id, "stop")
             logger.info(f"任务停止成功: {task_id}")
             return True
 
@@ -161,6 +201,7 @@ class TaskManager:
             # 删除数据库记录
             result = db_manager.delete_task(task_id)
             if result:
+                self.record_task_log_file(task_id, "delete")
                 logger.info(f"任务删除成功: {task_id}")
 
             return result
@@ -272,6 +313,11 @@ class TaskManager:
                             break
 
                         operations = strategy.process_symbol(symbol)
+                        self.record_task_log_file(
+                            task_id,
+                            "process_symbol",
+                            {"symbol": symbol, "operations": operations},
+                        )
                         if operations:
                             results = trade_manager.execute_strategy_operations(
                                 task_id, operations

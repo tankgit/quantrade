@@ -141,7 +141,7 @@ export const StatusBadge = ({ status, type = "default" }) => {
 };
 
 // 数值显示组件
-export const ValueDisplay = ({ value, showSign = false, prefix = "¥", className = "" }) => {
+export const ValueDisplay = ({ value, showSign = false, prefix = "¥", suffix = "", className = "" }) => {
     if (typeof value !== 'number' && isNaN(parseFloat(value))) {
         return <span className={`font-bold text-gray-500 ${className}`}>N/A</span>;
     }
@@ -153,7 +153,7 @@ export const ValueDisplay = ({ value, showSign = false, prefix = "¥", className
 
     return (
         <span className={`font-bold ${colorClass} ${className}`}>
-            {sign} {prefix}{numAbs.toLocaleString()}
+            {sign} {prefix}{numAbs.toFixed(2)}{suffix}
         </span>
     );
 };
