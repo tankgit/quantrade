@@ -341,6 +341,25 @@ async def get_task_logs(task_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/tasks/{task_id}/run_data")
+async def get_task_run_data(task_id: int):
+    """获取任务操作日志"""
+    try:
+        run_data = task_manager.get_task_run_data(task_id)
+
+        return {
+            "success": True,
+            "data": {
+                "task_id": task_id,
+                "run_data": run_data,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"获取任务运行数据失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # 系统状态接口
 @app.get("/api/status")
 async def get_system_status():

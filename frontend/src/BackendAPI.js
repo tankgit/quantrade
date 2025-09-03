@@ -100,6 +100,20 @@ export const api = {
         }
     },
 
+    async fetchRunData(selectedTaskId) {
+        try {
+            const response = await fetch(`${API_BASE}/api/tasks/${selectedTaskId}/run_data`);
+            const data = await response.json();
+            if (data.success) {
+                return data.data;
+            } else {
+                throw new Error(data || '获取日志失败');
+            }
+        } catch (error) {
+            console.error('获取日志失败:', error);
+        }
+    },
+
     async createTask(newTask) {
         try {
             const symbols = newTask.symbols.split(',').map(s => s.trim()).filter(s => s);

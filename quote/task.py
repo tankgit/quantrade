@@ -221,9 +221,10 @@ class TaskManager:
                 "task_id": task.task_id,
                 "account": task.account.value,
                 "market": task.market.value,
-                "symbols": task.get_symbols_list(),
+                "symbols": task.symbols,
                 "strategy": task.strategy,
                 "status": task.status.value,
+                "run_data": task.run_data,
                 "created_at": task.created_at.isoformat(),
                 "is_running": task_id in self.running_tasks,
                 "trading_sessions": self.running_tasks.get(task_id, {}).get(
@@ -246,9 +247,10 @@ class TaskManager:
                     "task_id": task.task_id,
                     "account": task.account.value,
                     "market": task.market.value,
-                    "symbols": task.get_symbols_list(),
+                    "symbols": task.symbols,
                     "strategy": task.strategy,
                     "status": task.status.value,
+                    "run_data": task.run_data,
                     "created_at": task.created_at.isoformat(),
                     "is_running": task.task_id in self.running_tasks,
                 }
@@ -257,6 +259,7 @@ class TaskManager:
             return result
 
         except Exception as e:
+            raise
             logger.error(f"列出任务失败: {e}")
             return []
 
@@ -284,6 +287,15 @@ class TaskManager:
             logger.error(f"获取任务日志失败: {task_id}, 错误: {e}")
             return []
 
+    def get_task_run_data(self, task_id: int) -> List[Dict]:
+        """获取任务运行数据"""
+        try:
+            return db_manager.get_task_run_data(task_id)
+
+        except Exception as e:
+            logger.error(f"获取任务运行数据失败: {task_id}, 错误: {e}")
+            return {}
+
     def _run_continuous_task(self, task_id: int, stop_event: Event):
         """运行持续任务"""
         try:
@@ -303,7 +315,7 @@ class TaskManager:
             # 获取交易管理器
             trade_manager = get_trade_manager(is_paper=is_paper)
 
-            symbols = task.get_symbols_list()
+            symbols = task.symbols
 
             while not stop_event.is_set():
                 try:
@@ -313,10 +325,15 @@ class TaskManager:
                             break
 
                         operations = strategy.process_symbol(symbol)
+                        db_manager.update_task_data(task_id, strategy.cache_data)
                         self.record_task_log_file(
                             task_id,
                             "process_symbol",
-                            {"symbol": symbol, "operations": operations},
+                            {
+                                "symbol": symbol,
+                                "operations": operations,
+                                "cache": strategy.cache_data,
+                            },
                         )
                         if operations:
                             results = trade_manager.execute_strategy_operations(
@@ -357,7 +374,7 @@ class TaskManager:
             # 获取交易管理器
             trade_manager = get_trade_manager(is_paper=is_paper)
 
-            symbols = task.get_symbols_list()
+            symbols = task.symbols
 
             # TODO: 这里AI的实现不太好，首先每个symbol要异步单独处理，然后交易时间整点需要立即触发，而不是按照机械间隔时间等待。
             while not stop_event.is_set():

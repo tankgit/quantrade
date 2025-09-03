@@ -1,7 +1,7 @@
 [project]
-name = "longport-trading-project"
+name = "pawquant-trade-project"
 version = "1.0.0"
-description = "LongPort量化交易系统"
+description = "PawQuant Trade"
 dependencies = [
     "longport==3.0.11",
     "fastapi==0.104.1",

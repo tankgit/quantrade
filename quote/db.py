@@ -63,14 +63,6 @@ class QuoteTask(Base):
     # 关联日志记录
     logs = relationship("QuoteTaskLog", back_populates="task")
 
-    def get_symbols_list(self):
-        """获取股票代码列表"""
-        return json.loads(self.symbols)
-
-    def set_symbols_list(self, symbols_list):
-        """设置股票代码列表"""
-        self.symbols = json.dumps(symbols_list)
-
 
 class QuoteTaskLog(Base):
     __tablename__ = "quote_task_log"
@@ -218,10 +210,10 @@ class DatabaseManager:
             task = QuoteTask(
                 account=account,
                 market=market,
-                symbols=json.dumps(symbols),
+                symbols=symbols,
                 strategy=strategy,
                 status=TaskStatus.STOPPED,
-                run_data="{}",
+                run_data={},
             )
             session.add(task)
             session.commit()
@@ -297,7 +289,7 @@ class DatabaseManager:
             session = self.get_session()
             task = session.query(QuoteTask).filter(QuoteTask.task_id == task_id).first()
             if task:
-                task.run_data = json.dumps(run_data)
+                task.run_data = run_data
                 session.commit()
                 logger.info(f"任务数据更新成功: ID={task_id}")
                 return True
@@ -379,12 +371,32 @@ class DatabaseManager:
             return (
                 session.query(QuoteTaskLog)
                 .filter(QuoteTaskLog.task_id == task_id)
-                .order_by(QuoteTaskLog.created_at.desce())
+                .order_by(QuoteTaskLog.created_at.asc())
                 .all()
             )
         except Exception as e:
             logger.error(f"获取任务日志失败: {e}")
             return []
+        finally:
+            if session:
+                session.close()
+
+    def get_task_run_data(self, task_id: int):
+        """获取任务的所有运行数据"""
+        session = None
+        try:
+            self.ensure_connection()
+            session = self.get_session()
+            # 获取其中的run_data字段
+            return (
+                session.query(QuoteTask)
+                .filter(QuoteTask.task_id == task_id)
+                .first()
+                .run_data
+            )
+        except Exception as e:
+            logger.error(f"获取任务运行数据失败: {e}")
+            return None
         finally:
             if session:
                 session.close()

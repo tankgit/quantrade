@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Activity, Play, Pause, Square, Plus, Eye, RefreshCw, Clock, X } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianAxis, ResponsiveContainer, Legend } from 'recharts';
 import { CustomSelect, CustomInput, AnimatedButton, GlassCard, StatusBadge } from '../components/basic';
 import { api } from '../BackendAPI';
 
@@ -7,6 +8,7 @@ import { api } from '../BackendAPI';
 const TaskPage = () => {
     const [tasks, setTasks] = useState([]);
     const [logs, setLogs] = useState([]);
+    const [runData, setRunData] = useState([]);
     const [strategies, setStrategies] = useState([]);
     const [selectedTaskId, setSelectedTaskId] = useState(null);
     const [showCreateForm, setShowCreateForm] = useState(false);
@@ -31,7 +33,6 @@ const TaskPage = () => {
 
     const fetchTasks = () => {
         api.fetchTasks().then(data => {
-            console.log(data)
             setTasks(data.tasks || []);
         });
     };
@@ -40,6 +41,19 @@ const TaskPage = () => {
         if (!selectedTaskId) return;
         api.fetchLogs(selectedTaskId).then(data => {
             setLogs(data.logs || []);
+        });
+    };
+    const fetchRunData = () => {
+        if (!selectedTaskId) return;
+        api.fetchRunData(selectedTaskId).then(data => {
+            console.log(">>>", selectedTaskId, data.run_data.price_history["CRCL.US"])
+            // 生成LineChart需要的数据，横坐标直接用序号表示
+            const chartData = Object.entries(data.run_data.price_history["CRCL.US"]).map(([i, price], index) => ({
+                time: index,
+                price
+            }));
+            console.log(chartData)
+            setRunData(chartData);
         });
     };
 
@@ -67,11 +81,16 @@ const TaskPage = () => {
             setStrategies(data?.strategies?.map(s => ({ value: s, label: s })) || []);
         });
         const interval = setInterval(fetchLogs, 60000);
-        return () => clearInterval(interval);
+        const interval_data = setInterval(fetchRunData, 10000)
+        return () => {
+            clearInterval(interval);
+            clearInterval(interval_data);
+        };
     }, []);
 
     useEffect(() => {
         fetchLogs();
+        fetchRunData();
     }, [selectedTaskId]);
 
     useEffect(() => {
@@ -220,31 +239,44 @@ const TaskPage = () => {
 
             {/* 任务日志 */}
             {selectedTaskId && (
-                <GlassCard>
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-2xl font-semibold flex items-center">
-                            <Clock className="w-6 h-6 mr-3 text-blue-600" />
-                            任务 #{selectedTaskId} 日志
-                        </h3>
-                        <AnimatedButton onClick={fetchLogs} variant="secondary" size="small">
-                            <RefreshCw className="w-4 h-4" />
-                            刷新日志
-                        </AnimatedButton>
-                    </div>
-                    <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 h-80 overflow-y-auto text-sm font-mono shadow-inner">
-                        {logs.length === 0 ? (
-                            <div className="text-gray-400 text-center py-12 text-base">暂无日志数据</div>
-                        ) : (
-                            logs.map((log, index) => (
-                                <div key={index} className="text-green-400 mb-2 hover:bg-gray-800/50 p-1 rounded transition-colors">
-                                    <span className="text-gray-500">[{log.created_at}]</span><span className="text-orange-500">[{log.symbol}] </span><span className={`${log.operation == "buy" ? "text-red-500" : "text-green-500"}`}>{log.operation.toUpperCase()}</span>
-                                    <span className="text-yellow-300 font-bold"> {log.quantity}</span> <span className="text-gray-500">x</span> <span className="text-blue-400 font-bold">{log.price}</span>
-                                </div>
-                            ))
-                        )}
-                        <div ref={logsEndRef} />
-                    </div>
-                </GlassCard>
+                <>
+                    <GlassCard>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-2xl font-semibold flex items-center">
+                                <Clock className="w-6 h-6 mr-3 text-blue-600" />
+                                任务 #{selectedTaskId} 日志
+                            </h3>
+                            <AnimatedButton onClick={fetchLogs} variant="secondary" size="small">
+                                <RefreshCw className="w-4 h-4" />
+                                刷新日志
+                            </AnimatedButton>
+                        </div>
+                        <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 h-80 overflow-y-auto text-sm font-mono shadow-inner">
+                            {logs.length === 0 ? (
+                                <div className="text-gray-400 text-center py-12 text-base">暂无日志数据</div>
+                            ) : (
+                                logs.map((log, index) => (
+                                    <div key={index} className="text-green-400 mb-2 hover:bg-gray-800/50 p-1 rounded transition-colors">
+                                        <span className="text-gray-500">[{log.created_at}]</span><span className="text-orange-500">[{log.symbol}] </span><span className={`${log.operation == "buy" ? "text-red-500" : "text-green-500"}`}>{log.operation.toUpperCase()}</span>
+                                        <span className="text-yellow-300 font-bold"> {log.quantity}</span> <span className="text-gray-500">x</span> <span className="text-blue-400 font-bold">{log.price}</span>
+                                    </div>
+                                ))
+                            )}
+                            <div ref={logsEndRef} />
+                        </div>
+                    </GlassCard>
+                    {/* 此处实现一个折线图表，展示run_data.price_history */}
+                    <GlassCard>
+                        <ResponsiveContainer height={400} width="100%">
+                            <LineChart data={runData}>
+                                <CartesianAxis strokeDasharray="3 3" stroke="#e2e8f0" />
+                                <XAxis dataKey="time" />
+                                <YAxis stroke='#64748b' />
+                                <Legend />
+                                <Line type="monotone" dataKey="price" stroke="#8884d8" strokeWidth={3} name="价格" dot={{ r: 3 }} />
+                            </LineChart></ResponsiveContainer>
+                    </GlassCard>
+                </>
             )}
         </div>
     );
