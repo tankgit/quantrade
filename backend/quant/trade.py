@@ -11,11 +11,11 @@ from longport.openapi import (
     OrderType,
     TimeInForceType,
 )
-from .config import longport_config
-from .db import db_manager, OperationType
-import logging
+from .utils.context import get_trade_context, get_quote_context
+from .utils.db import db_manager, OperationType
+from .utils.logger import base_logger, SUCCESS
 
-logger = logging.getLogger(__name__)
+logger = base_logger.getChild("Trade")
 
 
 class TradingTimeManager:
@@ -71,6 +71,7 @@ class TradingTimeManager:
             or current_time < cls.US_OVERNIGHT_END
         ):
             # 因为跨天了，所以跟别的判断条件不同
+            # NOTE: 注意，由于当前没有订阅夜盘，所以夜盘价格目前是空
             return "overnight"
         else:
             return None
@@ -123,7 +124,6 @@ class TradeManager:
 
     def __init__(self, is_paper: bool = False):
         self.is_paper = is_paper
-        self.config = longport_config.get_config(is_paper)
         self.trade_context = None
         self.quote_context = None
         self.initialize_contexts()
@@ -131,10 +131,11 @@ class TradeManager:
     def initialize_contexts(self):
         """初始化交易上下文"""
         try:
-            self.trade_context = TradeContext(self.config)
-            self.quote_context = QuoteContext(self.config)
-            logger.info(
-                f"交易上下文初始化成功 ({'模拟盘' if self.is_paper else '实盘'})"
+            self.trade_context = get_trade_context(is_paper=self.is_paper)
+            self.quote_context = get_quote_context(is_paper=self.is_paper)
+            logger.log(
+                SUCCESS,
+                f"交易上下文初始化成功 ({'模拟盘' if self.is_paper else '实盘'})",
             )
         except Exception as e:
             logger.error(f"初始化交易上下文失败: {e}")
@@ -171,8 +172,9 @@ class TradeManager:
                 submitted_price=price,
             )
 
-            logger.info(
-                f"买入订单提交成功: {symbol}, 数量: {quantity}, 订单ID: {response.order_id}"
+            logger.log(
+                SUCCESS,
+                f"买入订单提交成功: {symbol}, 数量: {quantity}, 订单ID: {response.order_id}",
             )
             return response
 
@@ -211,8 +213,9 @@ class TradeManager:
                 submitted_price=price,
             )
 
-            logger.info(
-                f"卖出订单提交成功: {symbol}, 数量: {quantity}, 订单ID: {response.order_id}"
+            logger.log(
+                SUCCESS,
+                f"卖出订单提交成功: {symbol}, 数量: {quantity}, 订单ID: {response.order_id}",
             )
             return response
 

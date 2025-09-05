@@ -2,18 +2,16 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 from contextlib import asynccontextmanager
-import logging
 import os
 
-import quote
-from quote.task import task_manager
-from quote.account import get_account_manager
-from quote.trade import get_trade_manager
-from quote.strategy import list_available_strategies
+from quant.utils.config import server_config
+from quant.task import task_manager
+from quant.account import get_account_manager
+from quant.trade import get_trade_manager
+from quant.strategy import list_available_strategies
+from quant.utils.logger import base_logger
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = base_logger.getChild("Server")
 
 
 @asynccontextmanager
@@ -393,7 +391,4 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
 
-    host = os.getenv("API_HOST", "0.0.0.0")
-    port = int(os.getenv("API_PORT", 8000))
-
-    uvicorn.run(app, host=host, port=port)
+    uvicorn.run(app, host=server_config.api_host, port=server_config.api_port)

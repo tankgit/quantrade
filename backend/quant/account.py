@@ -1,11 +1,11 @@
 import math
+from operator import ge
 from platform import libc_ver
 from typing import Dict, List, Optional
-from longport.openapi import TradeContext, QuoteContext
-from .config import longport_config
-import logging
+from .utils.context import get_trade_context, get_quote_context
+from .utils.logger import base_logger, SUCCESS
 
-logger = logging.getLogger(__name__)
+logger = base_logger.getChild("Account")
 
 
 class AccountManager:
@@ -13,7 +13,6 @@ class AccountManager:
 
     def __init__(self, is_paper: bool = False):
         self.is_paper = is_paper
-        self.config = longport_config.get_config(is_paper)
         self.trade_context = None
         self.quote_context = None
         self.initialize_contexts()
@@ -21,10 +20,11 @@ class AccountManager:
     def initialize_contexts(self):
         """初始化上下文"""
         try:
-            self.trade_context = TradeContext(self.config)
-            self.quote_context = QuoteContext(self.config)
-            logger.info(
-                f"账户上下文初始化成功 ({'模拟盘' if self.is_paper else '实盘'})"
+            self.trade_context = get_trade_context(is_paper=self.is_paper)
+            self.quote_context = get_quote_context(is_paper=self.is_paper)
+            logger.log(
+                SUCCESS,
+                f"账户上下文初始化成功 ({'模拟盘' if self.is_paper else '实盘'})",
             )
         except Exception as e:
             logger.error(f"初始化账户上下文失败: {e}")

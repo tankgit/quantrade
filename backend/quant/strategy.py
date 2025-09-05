@@ -3,12 +3,11 @@ import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
 from decimal import Decimal
-from longport.openapi import QuoteContext, TradeContext, SecurityQuote
-from .config import longport_config, server_config
+from .utils.context import get_quote_context, get_trade_context
 from .trade import TradingTimeManager
-import logging
+from .utils.logger import base_logger
 
-logger = logging.getLogger(__name__)
+logger = base_logger.getChild("Strategy")
 
 
 class BaseStrategy(ABC):
@@ -17,18 +16,18 @@ class BaseStrategy(ABC):
     def __init__(self, name: str, task_id: int = None, is_paper: bool = False):
         self.name = name
         self.is_paper = is_paper
-        self.config = longport_config.get_config(is_paper)
         self.quote_context = None
         self.trade_context = None
+        self.cache_data = {}
         self.positions = {}  # 持仓信息缓存
-        self.price_history = {}  # 价格历史缓存
         self.task_id = task_id
 
-    def initialize_contexts(self):
+    def initialize_contexts(self, cache_data: dict = None):
         """初始化交易和报价上下文"""
         try:
-            self.quote_context = QuoteContext(self.config)
-            self.trade_context = TradeContext(self.config)
+            self.quote_context = get_quote_context(self.is_paper)
+            self.trade_context = get_trade_context(self.is_paper)
+            self.cache_data = cache_data or {}
         except Exception as e:
             logger.error(f"初始化上下文失败: {e}")
             raise
@@ -100,15 +99,8 @@ class BaseStrategy(ABC):
 
         return max(adjusted_quantity, lot_size if adjusted_quantity > 0 else 0)
 
-    @property
-    def cache_data(self) -> Dict:
-        """
-        获取缓存数据
-        """
-        return {}
-
     @abstractmethod
-    def refresh_data(self, data: Dict) -> Dict:
+    def refresh_cache_data(self, data: Dict) -> Dict:
         """
         更新策略相关数据并缓存
         """
@@ -141,11 +133,12 @@ class BaseStrategy(ABC):
             # 获取当前价格和数据
             current_price = self.get_current_price(symbol)
             if not current_price:
+                logger.warning(f"无法获取当前时段股票的价格: {symbol}")
                 return operations
 
             data = {"current_price": current_price}
 
-            success = self.refresh_data(symbol, data)
+            success = self.refresh_cache_data(symbol, data)
             if not success:
                 return
 
@@ -164,7 +157,7 @@ class BaseStrategy(ABC):
                     )
 
             # 检查卖出信号
-            should_sell, sell_quantity = self.should_sell(symbol, data)
+            should_sell, sell_quantity = self.should_sell(symbol)
             if should_sell and sell_quantity > 0:
                 operations.append(
                     {
@@ -198,66 +191,53 @@ class SimpleMAStrategy(BaseStrategy):
         self.short_period = short_period
         self.long_period = long_period
         self.buy_amount = buy_amount  # 每次买入金额
-        self.price_history = {}  # 价格历史记录
-        self.short_ma_history = {}
-        self.long_ma_history = {}
         self.max_price_history = max(
             max_price_history or self.long_period * 2, self.long_period
         )
         self.max_ma_history = max(max_ma_history, 1)
 
-    @property
-    def cache_data(self) -> Dict:
-        """
-        获取策略相关缓存数据
-        """
-        return {
-            "price_history": self.price_history,
-            "short_ma_history": self.short_ma_history,
-            "long_ma_history": self.long_ma_history,
-        }
-
     def update_price_history(self, symbol: str, price: Decimal):
         """更新价格历史"""
-        if symbol not in self.price_history:
-            self.price_history[symbol] = []
+        price_history = self.cache_data.get("price_history", {})
+        if symbol not in price_history:
+            price_history[symbol] = []
 
-        self.price_history[symbol].append(float(price))
+        price_history[symbol].append(float(price))
 
         # 保持历史记录不超过长期周期的2倍
-        self.price_history[symbol] = self.price_history[symbol][
-            -self.max_price_history :
-        ]
+        price_history[symbol] = price_history[symbol][-self.max_price_history :]
+        self.cache_data["price_history"] = price_history
 
     def update_ma_history(self, symbol: str, short_ma: float, long_ma: float):
         """更新移动平均线历史"""
-        if symbol not in self.short_ma_history:
-            self.short_ma_history[symbol] = []
-        if symbol not in self.long_ma_history:
-            self.long_ma_history[symbol] = []
+        short_ma_history = self.cache_data.get("short_ma_history", {})
+        long_ma_history = self.cache_data.get("long_ma_history", {})
+        if symbol not in short_ma_history:
+            short_ma_history[symbol] = []
+        if symbol not in long_ma_history:
+            long_ma_history[symbol] = []
 
-        self.short_ma_history[symbol].append(short_ma)
-        self.long_ma_history[symbol].append(long_ma)
+        short_ma_history[symbol].append(short_ma)
+        long_ma_history[symbol].append(long_ma)
 
-        self.short_ma_history[symbol] = self.short_ma_history[symbol][
-            -self.max_ma_history :
-        ]
-        self.long_ma_history[symbol] = self.long_ma_history[symbol][
-            -self.max_ma_history :
-        ]
+        short_ma_history[symbol] = short_ma_history[symbol][-self.max_ma_history :]
+        long_ma_history[symbol] = long_ma_history[symbol][-self.max_ma_history :]
+
+        self.cache_data["short_ma_history"] = short_ma_history
+        self.cache_data["long_ma_history"] = long_ma_history
 
     def calculate_ma(self, symbol: str, period: int) -> Optional[float]:
         """计算移动平均线"""
-        if symbol not in self.price_history:
+        prices = self.cache_data.get("price_history", {}).get(symbol, [])
+        if len(prices) < period:
             return None
 
-        prices = self.price_history[symbol]
         if len(prices) < period:
             return None
 
         return sum(prices[-period:]) / period
 
-    def refresh_data(self, symbol, data: Dict) -> bool:
+    def refresh_cache_data(self, symbol, data: Dict) -> bool:
         current_price = data.get("current_price")
         if not current_price:
             return False
@@ -276,17 +256,41 @@ class SimpleMAStrategy(BaseStrategy):
         self, symbol: str, short_ma: float = None, long_ma: float = None
     ) -> Tuple[bool, Decimal]:
         """买入信号：短期MA上穿长期MA"""
-        short_ma = short_ma or self.short_ma_history[symbol][-1]
-        long_ma = long_ma or self.long_ma_history[symbol][-1]
+        try:
+            short_ma = (
+                short_ma
+                or self.cache_data.get("short_ma_history", {}).get(symbol, [])[-1]
+            )
+            long_ma = (
+                long_ma
+                or self.cache_data.get("long_ma_history", {}).get(symbol, [])[-1]
+            )
+        except:
+            return False, Decimal("0")
 
         # 如果当前短期MA > 长期MA，且之前短期MA <= 长期MA，则产生买入信号
-        if short_ma > long_ma and len(self.price_history[symbol]) > self.long_period:
+        price_history = self.cache_data.get("price_history", {}).get(symbol, [])
+        print(
+            ">>>",
+            f"[short {short_ma}]",
+            f"[long {long_ma}]",
+            f"[short>long? {short_ma > long_ma}]",
+            f"[price_history_len {len(price_history)}]",
+            f"[long_period {self.long_period}]",
+        )
+        if short_ma > long_ma and len(price_history) > self.long_period:
             # 简单的金叉判断
-            prev_prices = self.price_history[symbol][:-1]
+            prev_prices = price_history[:-1]
             if len(prev_prices) >= self.long_period:
                 prev_short = sum(prev_prices[-self.short_period :]) / self.short_period
                 prev_long = sum(prev_prices[-self.long_period :]) / self.long_period
 
+                print(
+                    ">>>>",
+                    f"[prev_short {prev_short}]",
+                    f"[prev_long {prev_long}]",
+                    f"[prev_short <= prev_long? {prev_short <= prev_long}]",
+                )
                 if prev_short <= prev_long:  # 之前短期MA不大于长期MA
                     return True, self.buy_amount
 
@@ -296,20 +300,44 @@ class SimpleMAStrategy(BaseStrategy):
         self, symbol: str, short_ma: float = None, long_ma: float = None
     ) -> Tuple[bool, int]:
         """卖出信号：短期MA下穿长期MA"""
-        short_ma = short_ma or self.short_ma_history[symbol][-1]
-        long_ma = long_ma or self.long_ma_history[symbol][-1]
+        try:
+            short_ma = (
+                short_ma
+                or self.cache_data.get("short_ma_history", {}).get(symbol, [])[-1]
+            )
+            long_ma = (
+                long_ma
+                or self.cache_data.get("long_ma_history", {}).get(symbol, [])[-1]
+            )
+        except:
+            return False, Decimal("0")
 
         # 检查是否有足够的历史数据
-        if len(self.price_history[symbol]) < self.long_period + 1:
+        price_history = self.cache_data.get("price_history", {}).get(symbol, [])
+        print(
+            "<<<",
+            f"[short {short_ma}]",
+            f"[long {long_ma}]",
+            f"[short<long? {short_ma < long_ma}]",
+            f"[price_history_len {len(price_history)}]",
+            f"[long_period {self.long_period}]",
+        )
+        if len(price_history) < self.long_period + 1:
             return False, 0
 
         # 如果当前短期MA < 长期MA，且之前短期MA >= 长期MA，则产生卖出信号
         if short_ma < long_ma:
-            prev_prices = self.price_history[symbol][:-1]
+            prev_prices = price_history[:-1]
             if len(prev_prices) >= self.long_period:
                 prev_short = sum(prev_prices[-self.short_period :]) / self.short_period
                 prev_long = sum(prev_prices[-self.long_period :]) / self.long_period
 
+                print(
+                    "<<<<",
+                    f"[prev_short {prev_short}]",
+                    f"[prev_long {prev_long}]",
+                    f"[prev_short >= prev_long? {prev_short >= prev_long}]",
+                )
                 if prev_short >= prev_long:  # 之前短期MA不小于长期MA
                     # 获取当前持仓数量，简化处理返回一个固定数量，但不能可交易持仓
                     return True, min(self.get_current_position(symbol), 5)

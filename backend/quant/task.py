@@ -6,14 +6,14 @@ from threading import Thread, Event
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import time as time_module
-import logging
 
-from .config import server_config
-from .db import db_manager, AccountType, MarketType, TaskStatus, OperationType
+from .utils.logger import base_logger, SUCCESS
+from .utils.config import server_config
+from .utils.db import db_manager, AccountType, MarketType, TaskStatus, OperationType
 from .strategy import get_strategy, list_available_strategies
 from .trade import TradingTimeManager, get_trade_manager
 
-logger = logging.getLogger(__name__)
+logger = base_logger.getChild("Task")
 
 
 class TaskManager:
@@ -31,17 +31,16 @@ class TaskManager:
         """记录任务日志到文件"""
         try:
             date = datetime.now().strftime("%Y-%m-%d")
-            log_file = os.path.join(
-                server_config.task_log_dir, f"{date}_task_{task_id}.log"
-            )
-            log_line = f"[{date}][{action}]"
+            time = datetime.now().strftime("%H:%M:%S")
+            log_file = os.path.join(server_config.task_log_dir, f"task_{task_id}.log")
+            log_line = f"[{date} {time}][{action}]"
             if log_data:
                 log_line += f"{json.dumps(log_data)}"
 
             with open(log_file, "a+") as f:
                 f.write(log_line + "\n")
 
-            logger.info(f"任务日志记录成功: {log_file}")
+            logger.log(SUCCESS, f"任务日志记录成功: {log_file}")
             return True
 
         except Exception as e:
@@ -83,8 +82,9 @@ class TaskManager:
                 strategy=strategy,
             )
 
-            logger.info(
-                f"任务创建成功: ID={task_id}, 账户={account}, 市场={market}, 策略={strategy}"
+            logger.log(
+                SUCCESS,
+                f"任务创建成功: ID={task_id}, 账户={account}, 市场={market}, 策略={strategy}",
             )
             self.record_task_log_file(
                 task_id,
@@ -138,7 +138,8 @@ class TaskManager:
                 # 持续运行
                 logger.info(f"持续任务:{trading_sessions}, {task}")
                 thread = Thread(
-                    target=self._run_continuous_task, args=(task_id, stop_event)
+                    target=self._run_continuous_task,
+                    args=(task_id, stop_event, task.run_data),
                 )
 
             thread.daemon = True
@@ -150,7 +151,7 @@ class TaskManager:
                 "trading_sessions": trading_sessions or [],
             }
 
-            logger.info(f"任务启动成功: {task_id}")
+            logger.log(SUCCESS, f"任务启动成功: {task_id}")
             return True
 
         except Exception as e:
@@ -167,7 +168,7 @@ class TaskManager:
 
             db_manager.update_task_status(task_id, TaskStatus.PAUSED)
             self.record_task_log_file(task_id, "pause")
-            logger.info(f"任务暂停成功: {task_id}")
+            logger.log(SUCCESS, f"任务暂停成功: {task_id}")
             return True
 
         except Exception as e:
@@ -184,7 +185,7 @@ class TaskManager:
 
             db_manager.update_task_status(task_id, TaskStatus.STOPPED)
             self.record_task_log_file(task_id, "stop")
-            logger.info(f"任务停止成功: {task_id}")
+            logger.log(SUCCESS, f"任务停止成功: {task_id}")
             return True
 
         except Exception as e:
@@ -202,7 +203,7 @@ class TaskManager:
             result = db_manager.delete_task(task_id)
             if result:
                 self.record_task_log_file(task_id, "delete")
-                logger.info(f"任务删除成功: {task_id}")
+                logger.log(SUCCESS, f"任务删除成功: {task_id}")
 
             return result
 
@@ -259,7 +260,6 @@ class TaskManager:
             return result
 
         except Exception as e:
-            raise
             logger.error(f"列出任务失败: {e}")
             return []
 
@@ -296,7 +296,9 @@ class TaskManager:
             logger.error(f"获取任务运行数据失败: {task_id}, 错误: {e}")
             return {}
 
-    def _run_continuous_task(self, task_id: int, stop_event: Event):
+    def _run_continuous_task(
+        self, task_id: int, stop_event: Event, run_data: Dict = None
+    ):
         """运行持续任务"""
         try:
             task = db_manager.get_task(task_id)
@@ -310,7 +312,7 @@ class TaskManager:
                 logger.error(f"策略不存在: {task.strategy}")
                 return
 
-            strategy.initialize_contexts()
+            strategy.initialize_contexts(run_data)
 
             # 获取交易管理器
             trade_manager = get_trade_manager(is_paper=is_paper)
@@ -323,7 +325,6 @@ class TaskManager:
                     for symbol in symbols:
                         if stop_event.is_set():
                             break
-
                         operations = strategy.process_symbol(symbol)
                         db_manager.update_task_data(task_id, strategy.cache_data)
                         self.record_task_log_file(
@@ -342,7 +343,7 @@ class TaskManager:
                             logger.info(f"任务 {task_id} 执行操作: {results}")
 
                     # 等待一段时间再进行下次检查
-                    stop_event.wait(60)  # 等待60秒
+                    stop_event.wait(5)  # 等待60秒
 
                 except Exception as e:
                     logger.error(f"任务执行出错: {task_id}, 错误: {e}")
@@ -354,7 +355,11 @@ class TaskManager:
             logger.info(f"任务停止运行: {task_id}")
 
     def _run_scheduled_task(
-        self, task_id: int, stop_event: Event, trading_sessions: Set[str]
+        self,
+        task_id: int,
+        stop_event: Event,
+        trading_sessions: Set[str],
+        run_data: Dict = None,
     ):
         """运行定时任务（美股按时段）"""
         try:
@@ -369,7 +374,7 @@ class TaskManager:
                 logger.error(f"策略不存在: {task.strategy}")
                 return
 
-            strategy.initialize_contexts()
+            strategy.initialize_contexts(run_data)
 
             # 获取交易管理器
             trade_manager = get_trade_manager(is_paper=is_paper)
@@ -396,7 +401,7 @@ class TaskManager:
 
                     # 如果有任一symbol在交易时间，则每分钟检查一次，否则每10分钟检查一次
                     if any_trading:
-                        stop_event.wait(60)
+                        stop_event.wait(5)
                     else:
                         stop_event.wait(600)
 

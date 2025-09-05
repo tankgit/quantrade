@@ -4,18 +4,16 @@
 用于单独测试和初始化数据库连接
 """
 
+from re import S
 import sys
 import os
 import logging
 from dotenv import load_dotenv
 import pymysql
 from sqlalchemy import create_engine, text
+from quant.utils.logger import base_logger, SUCCESS
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+logger = base_logger.getChild("Database")
 
 
 def test_mysql_connection():
@@ -29,11 +27,11 @@ def test_mysql_connection():
             user=os.getenv("MYSQL_USER", "root"),
             password=os.getenv("MYSQL_PASSWORD", ""),
         )
-        logger.info("✅ MySQL基础连接成功")
+        logger.log(SUCCESS, "MySQL基础连接成功")
         connection.close()
         return True
     except Exception as e:
-        logger.error(f"❌ MySQL基础连接失败: {e}")
+        logger.error(f"MySQL基础连接失败: {e}")
         return False
 
 
@@ -63,57 +61,57 @@ def create_database_manually():
             cursor.execute(
                 f"CREATE DATABASE `{database_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
             )
-            logger.info("✅ 数据库创建成功")
+            logger.log(SUCCESS, "数据库创建成功")
         else:
-            logger.info(f"✅ 数据库 {database_name} 已存在")
+            logger.log(SUCCESS, f"数据库 {database_name} 已存在")
 
         cursor.close()
         connection.close()
         return True
 
     except Exception as e:
-        logger.error(f"❌ 创建数据库失败: {e}")
+        logger.error(f"创建数据库失败: {e}")
         return False
 
 
 def test_sqlalchemy_connection():
     """测试SQLAlchemy连接"""
     try:
-        from quote.config import db_config
+        from quant.utils.config import db_config
 
         # 测试连接到数据库
         engine = create_engine(db_config.get_connection_url(), echo=False)
 
         with engine.connect() as connection:
             result = connection.execute(text("SELECT 1"))
-            logger.info("✅ SQLAlchemy连接成功")
+            logger.log(SUCCESS, "SQLAlchemy连接成功")
 
         engine.dispose()
         return True
 
     except Exception as e:
-        logger.error(f"❌ SQLAlchemy连接失败: {e}")
+        logger.error(f"SQLAlchemy连接失败: {e}")
         return False
 
 
 def initialize_database():
     """完整的数据库初始化"""
     try:
-        from quote.db import db_manager
+        from quant.utils.db import db_manager
 
         if db_manager is None:
-            logger.error("❌ 数据库管理器初始化失败")
+            logger.error("数据库管理器初始化失败")
             return False
 
         if db_manager.test_connection():
-            logger.info("✅ 数据库初始化成功")
+            logger.log(SUCCESS, "数据库初始化成功")
             return True
         else:
-            logger.error("❌ 数据库连接测试失败")
+            logger.error("数据库连接测试失败")
             return False
 
     except Exception as e:
-        logger.error(f"❌ 数据库初始化失败: {e}")
+        logger.error(f"数据库初始化失败: {e}")
         return False
 
 
@@ -123,10 +121,10 @@ def main():
 
     # 步骤1: 检查.env文件
     if not os.path.exists(".env"):
-        logger.error("❌ 未找到.env配置文件")
+        logger.error("未找到.env配置文件")
         return False
 
-    logger.info("✅ 找到.env配置文件")
+    logger.log(SUCCESS, "找到.env配置文件")
 
     # 步骤2: 测试MySQL基础连接
     if not test_mysql_connection():

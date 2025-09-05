@@ -12,3 +12,6 @@ wheels/
 test.ipynb
 
 node_modules/
+.env
+logs
+.vscode/

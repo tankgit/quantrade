@@ -1,6 +1,0 @@
-{
-    "python.analysis.autoImportCompletions": true,
-    "files.exclude": {
-        "**/.venv": true
-    }
-}

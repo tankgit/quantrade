@@ -8,9 +8,13 @@ load_dotenv()
 
 class ServerConfig:
     def __init__(self):
+        self.api_host = os.getenv("API_HOST", "0.0.0.0")
+        self.api_port = int(os.getenv("API_PORT", 8000))
         self.task_log_dir = os.getenv("TASK_LOG_DIR")
         if not os.path.exists(self.task_log_dir):
             os.makedirs(self.task_log_dir)
+        self.server_log_file = os.getenv("SERVER_LOG_FILE")
+        self.server_log_level = os.getenv("SERVER_LOG_LEVEL", "INFO")
 
 
 class LongPortConfig:
@@ -65,5 +69,9 @@ class DatabaseConfig:
 
 # 全局配置实例
 server_config = ServerConfig()
-longport_config = LongPortConfig()
 db_config = DatabaseConfig()
+
+
+_longport_config = LongPortConfig()
+paper_longport_config = _longport_config.get_config(is_paper=True)
+live_longport_config = _longport_config.get_config(is_paper=False)

@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlalchemy import (
     JSON,
     create_engine,
@@ -20,9 +21,9 @@ import json
 import pymysql
 from enum import Enum as PyEnum
 from .config import db_config
-import logging
+from .logger import base_logger, SUCCESS
 
-logger = logging.getLogger(__name__)
+logger = base_logger.getChild("Database")
 
 Base = declarative_base()
 
@@ -110,9 +111,9 @@ class DatabaseManager:
                     )
                     # SQLAlchemy 2.0+ 需要显式提交
                     connection.commit()
-                    logger.info(f"数据库 {db_config.database} 创建成功")
+                    logger.log(SUCCESS, f"数据库 {db_config.database} 创建成功")
                 else:
-                    logger.info(f"数据库 {db_config.database} 已存在")
+                    logger.info(f"数据库 {db_config.database} 已存在，跳过创建")
 
             temp_engine.dispose()
 
@@ -152,7 +153,7 @@ class DatabaseManager:
             # 创建表
             self.create_tables()
 
-            logger.info("数据库初始化成功")
+            logger.log(SUCCESS, "数据库初始化成功")
 
         except Exception as e:
             logger.error(f"数据库初始化失败: {e}")
@@ -163,11 +164,11 @@ class DatabaseManager:
         try:
             # 检查是否能连接到数据库
             with self.engine.connect() as connection:
-                logger.info("数据库连接成功，开始创建表...")
+                logger.log(SUCCESS, "数据库连接成功，开始创建表...")
 
             # 创建所有表
             Base.metadata.create_all(bind=self.engine)
-            logger.info("数据库表创建成功")
+            logger.log(SUCCESS, "数据库表创建成功")
 
         except (OperationalError, ProgrammingError) as e:
             logger.error(f"创建数据库表失败: {e}")
@@ -181,7 +182,7 @@ class DatabaseManager:
         try:
             with self.engine.connect() as connection:
                 result = connection.execute(text("SELECT 1"))
-                logger.info("数据库连接测试成功")
+                logger.log(SUCCESS, "数据库连接测试成功")
                 return True
         except Exception as e:
             logger.error(f"数据库连接测试失败: {e}")
@@ -218,7 +219,7 @@ class DatabaseManager:
             session.add(task)
             session.commit()
             task_id = task.task_id
-            logger.info(f"任务创建成功: ID={task_id}")
+            logger.log(SUCCESS, f"任务创建成功: ID={task_id}")
             return task_id
         except Exception as e:
             if session:
@@ -229,7 +230,7 @@ class DatabaseManager:
             if session:
                 session.close()
 
-    def get_task(self, task_id: int):
+    def get_task(self, task_id: int) -> Optional[QuoteTask]:
         """获取任务信息"""
         session = None
         try:
@@ -267,7 +268,9 @@ class DatabaseManager:
             if task:
                 task.status = status
                 session.commit()
-                logger.info(f"任务状态更新成功: ID={task_id}, 状态={status.value}")
+                logger.log(
+                    SUCCESS, f"任务状态更新成功: ID={task_id}, 状态={status.value}"
+                )
                 return True
             else:
                 logger.warning(f"任务不存在: ID={task_id}")
@@ -291,7 +294,7 @@ class DatabaseManager:
             if task:
                 task.run_data = run_data
                 session.commit()
-                logger.info(f"任务数据更新成功: ID={task_id}")
+                logger.log(SUCCESS, f"任务数据更新成功: ID={task_id}")
                 return True
             else:
                 logger.warning(f"任务不存在: ID={task_id}")
@@ -318,7 +321,7 @@ class DatabaseManager:
             if task:
                 session.delete(task)
                 session.commit()
-                logger.info(f"任务删除成功: ID={task_id}")
+                logger.log(SUCCESS, f"任务删除成功: ID={task_id}")
                 return True
             else:
                 logger.warning(f"任务不存在: ID={task_id}")
@@ -351,7 +354,7 @@ class DatabaseManager:
             session.add(log)
             session.commit()
             log_id = log.log_id
-            logger.info(f"交易日志记录成功: ID={log_id}")
+            logger.log(SUCCESS, f"交易日志记录成功: ID={log_id}")
             return log_id
         except Exception as e:
             if session:
@@ -405,7 +408,7 @@ class DatabaseManager:
 # 全局数据库管理器实例
 try:
     db_manager = DatabaseManager()
-    logger.info("数据库管理器初始化成功")
+    logger.log(SUCCESS, "数据库管理器初始化成功")
 except Exception as e:
     logger.error(f"数据库管理器初始化失败: {e}")
     db_manager = None
